@@ -234,89 +234,158 @@ const HARNESS_SCRIPT_TEXT = `
 })();
 `;
 
-function sanitizeForInlineScript(src) {
+function sanitizeJsForScriptTag(src) {
   return String(src == null ? '' : src).replace(/<\/(script)/gi, '<\\/$1');
 }
 
 function compileCodeToHtml(code, controlled) {
   code = (code || '').trim();
-  const isHtml = /<(html|head|body|canvas|script|style|div|svg)\b/i.test(code);
+  
+  // 1. Deteksi mode
+  const isFullHtml = /<!DOCTYPE\s+html/i.test(code) || /<html[\s>]/i.test(code);
+  const isFragment = !isFullHtml && /<(canvas|script|style|div|section|main|svg|body|head)\b/i.test(code);
+  const mode = isFullHtml ? 'full-html' : (isFragment ? 'fragment' : 'js-only');
 
-  if (isHtml) {
-    // User provided partial or full HTML document
-    let processed = sanitizeForInlineScript(code);
-    
-    // Inject deterministic harness and error styles
-    const errorInject = '<script>' +
-      'window.onerror = function(msg, url, line, col, err) {' +
-      '  if (window.parent && window.parent.onStageConsole) {' +
-      '    window.parent.onStageConsole(String(msg));' +
-      '  }' +
-      '};<\/script>';
-    const harnessInject = '<script>' + HARNESS_SCRIPT_TEXT + '\nif(window.__HARNESS__) window.__HARNESS__.setControlled(' + (controlled ? 'true' : 'false') + ');\nwindow.__HARNESS_READY__ = true;<\/script>' +
-      errorInject +
-      '<style>html,body{margin:0!important;padding:0!important;overflow:hidden!important;width:100%!important;height:100%!important;background:#000!important}canvas{display:block!important;width:100%!important;height:100%!important;}</style>';
-    
-    if (/<head\b[^>]*>/i.test(processed)) {
-      processed = processed.replace(/<head\b[^>]*>/i, '$$&' + harnessInject);
-    } else if (/<html\b[^>]*>/i.test(processed)) {
-      processed = processed.replace(/<html\b[^>]*>/i, '$$&<head>' + harnessInject + '</head>');
+  const cssReset = '<style>' +
+    'html,body{margin:0!important;padding:0!important;width:100%!important;height:100%!important;overflow:hidden!important;background:#000!important;}' +
+    'canvas{display:block!important;}' +
+    '#__cm_err__{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(225,29,72,0.95);color:#fff;padding:8px 12px;font-family:monospace;font-size:12px;z-index:999999;border-top:1px solid #fda4af;word-break:break-word;white-space:pre-wrap;}' +
+    '</style>';
+
+  const harnessScript = '<script>' +
+    HARNESS_SCRIPT_TEXT + '\n' +
+    'if (window.__HARNESS__) { window.__HARNESS__.setControlled(' + (controlled ? 'true' : 'false') + '); }\n' +
+    'window.__HARNESS_READY__ = true;\n' +
+    '<\/script>';
+
+  const errHandlerScript = '<script>' +
+    'function __showCmErr(msg) {' +
+    '  var box = document.getElementById("__cm_err__");' +
+    '  if (!box) {' +
+    '    box = document.createElement("div");' +
+    '    box.id = "__cm_err__";' +
+    '    if (document.body) { document.body.appendChild(box); } else { document.documentElement.appendChild(box); }' +
+    '  }' +
+    '  box.style.display = "block";' +
+    '  box.textContent = "⚠️ " + msg;' +
+    '  if (window.parent && window.parent.onStageConsole) {' +
+    '    window.parent.onStageConsole(String(msg));' +
+    '  }' +
+    '}' +
+    'window.onerror = function(msg, url, line, col, err) {' +
+    '  var errText = (line ? "Baris " + line + ": " : "") + msg;' +
+    '  __showCmErr(errText);' +
+    '};' +
+    'window.addEventListener("unhandledrejection", function(e) {' +
+    '  var reason = (e && e.reason) ? (e.reason.message || String(e.reason)) : "Unhandled promise rejection";' +
+    '  __showCmErr(reason);' +
+    '});' +
+    '<\/script>';
+
+  const canvasAliasScript = '<script>' +
+    '(function() {' +
+    '  var findCanvas = function() {' +
+    '    return document.querySelector("canvas") || document.getElementById("canvas") || document.getElementById("c");' +
+    '  };' +
+    '  var origGet = document.getElementById.bind(document);' +
+    '  document.getElementById = function(id) {' +
+    '    var el = origGet(id);' +
+    '    if (!el && (id === "c" || id === "canvas" || id === "stage" || id === "myCanvas")) return findCanvas();' +
+    '    return el;' +
+    '  };' +
+    '  var origQuery = document.querySelector.bind(document);' +
+    '  document.querySelector = function(sel) {' +
+    '    var el = origQuery(sel);' +
+    '    if (!el && (sel === "canvas" || sel === "#c" || sel === "#canvas")) return findCanvas();' +
+    '    return el;' +
+    '  };' +
+    '  var setupGlobals = function() {' +
+    '    var c = findCanvas();' +
+    '    if (c) {' +
+    '      window.canvas = c;' +
+    '      window.c = c;' +
+    '      window.W = ' + TARGET_W + ';' +
+    '      window.H = ' + TARGET_H + ';' +
+    '    }' +
+    '  };' +
+    '  if (document.readyState === "loading") {' +
+    '    document.addEventListener("DOMContentLoaded", setupGlobals);' +
+    '  } else {' +
+    '    setupGlobals();' +
+    '  }' +
+    '})();' +
+    '<\/script>';
+
+  const errorDivHtml = '<div id="__cm_err__"></div>';
+
+  if (mode === 'full-html') {
+    let html = code;
+    const headBlock = harnessScript + errHandlerScript + cssReset + canvasAliasScript;
+
+    // Inject to <head> if exists, or after <html...>
+    if (/<head\b[^>]*>/i.test(html)) {
+      html = html.replace(/<head\b[^>]*>/i, function(match) { return match + headBlock; });
+    } else if (/<html\b[^>]*>/i.test(html)) {
+      html = html.replace(/<html\b[^>]*>/i, function(match) { return match + '<head>' + headBlock + '</head>'; });
     } else {
-      processed = '<head>' + harnessInject + '</head>' + processed;
+      html = '<head>' + headBlock + '</head>' + html;
     }
 
-    // Ensure a canvas exists
-    if (!/<canvas\b/i.test(processed)) {
-      processed += '\n<canvas id="canvas" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>';
+    // Ensure error div in body
+    if (/<body\b[^>]*>/i.test(html)) {
+      html = html.replace(/<body\b[^>]*>/i, function(match) { return match + errorDivHtml; });
+    } else {
+      html = html + errorDivHtml;
     }
 
-    return processed;
-  } else {
-    // User provided pure JavaScript canvas code
+    // Auto-create canvas if not present
+    if (!/<canvas\b/i.test(html)) {
+      const defaultCanvas = '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>';
+      if (/<\/body>/i.test(html)) {
+        html = html.replace(/<\/body>/i, defaultCanvas + '</body>');
+      } else {
+        html = html + defaultCanvas;
+      }
+    }
+
+    return html;
+  }
+
+  if (mode === 'fragment') {
+    let bodyContent = code;
+    if (!/<canvas\b/i.test(bodyContent)) {
+      bodyContent = '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>\n' + bodyContent;
+    }
+
     return '<!DOCTYPE html>' +
       '<html><head><meta charset="utf-8">' +
-      '<style>' +
-      'html,body{margin:0!important;padding:0!important;overflow:hidden!important;width:100%!important;height:100%!important;background:#000!important}' +
-      'canvas{display:block!important;width:100%!important;height:100%!important;}' +
-      '#errBox{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(225,29,72,0.95);color:#fff;padding:8px 12px;font-family:monospace;font-size:12px;z-index:9999;border-top:1px solid #fda4af;word-break:break-word;}' +
-      '</style>' +
-      '<script>' + HARNESS_SCRIPT_TEXT + '<\/script>' +
+      harnessScript +
+      errHandlerScript +
+      cssReset +
+      canvasAliasScript +
       '</head><body>' +
-      '<canvas id="canvas" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>' +
-      '<div id="errBox"></div>' +
-      '<script>' +
-      'window.onerror = function(msg, url, line, col, err) {' +
-      '  var b = document.getElementById("errBox");' +
-      '  if (b) { b.style.display = "block"; b.textContent = "⚠️ " + (line ? "Baris " + line + ": " : "") + msg; }' +
-      '  if (window.parent && window.parent.onStageConsole) { window.parent.onStageConsole(String(msg)); }' +
-      '};' +
-      'if(window.__HARNESS__) window.__HARNESS__.setControlled(' + (controlled ? 'true' : 'false') + ');\n' +
-      'var __c = document.getElementById("canvas");\n' +
-      'window.canvas = __c;\n' +
-      'window.c = __c;\n' +
-      'window.W = ' + TARGET_W + ';\n' +
-      'window.H = ' + TARGET_H + ';\n' +
-      'var __origGet = document.getElementById.bind(document);\n' +
-      'document.getElementById = function(id) {\n' +
-      '  var el = __origGet(id);\n' +
-      '  if (!el && (id === "c" || id === "canvas" || id === "stage" || id === "myCanvas")) return __c;\n' +
-      '  return el;\n' +
-      '};\n' +
-      'var __origQuery = document.querySelector.bind(document);\n' +
-      'document.querySelector = function(sel) {\n' +
-      '  var el = __origQuery(sel);\n' +
-      '  if (!el && (sel === "canvas" || sel === "#c" || sel === "#canvas")) return __c;\n' +
-      '  return el;\n' +
-      '};\n' +
-      'window.__HARNESS_READY__ = true;\n' +
-      '<\/script>' +
-      '<script>\n' +
-      'try {\n' +
-      sanitizeForInlineScript(code) + '\n' +
-      '} catch(e) { window.onerror(e.message || String(e), "", 0, 0, e); }\n' +
-      '<\/script>' +
+      errorDivHtml +
+      bodyContent +
       '</body></html>';
   }
+
+  // js-only mode: sanitasi script tag karena kita yang membungkus kode user ke tag <script>
+  const safeJsCode = sanitizeJsForScriptTag(code);
+  return '<!DOCTYPE html>' +
+    '<html><head><meta charset="utf-8">' +
+    harnessScript +
+    errHandlerScript +
+    cssReset +
+    '</head><body>' +
+    '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>' +
+    errorDivHtml +
+    canvasAliasScript +
+    '<script>\n' +
+    'try {\n' +
+    safeJsCode + '\n' +
+    '} catch(e) { window.onerror(e && e.message ? e.message : String(e), "", 0, 0, e); }\n' +
+    '<\/script>' +
+    '</body></html>';
 }
 
 function loadLivePreview(code, controlled) {
