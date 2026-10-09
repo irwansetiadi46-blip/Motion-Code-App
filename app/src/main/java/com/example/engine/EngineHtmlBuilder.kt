@@ -238,14 +238,12 @@ function sanitizeJsForScriptTag(src) {
   return String(src == null ? '' : src).replace(/<\/(script)/gi, '<\\/$1');
 }
 
-// Deteksi apakah kode user mendefinisikan atau mencoba mengambil elemen canvas
+// Deteksi apakah kode user mendefinisikan elemen canvas eksplisit
 function userHasCanvas(code) {
   if (!code) return false;
   return /<canvas\b/i.test(code) ||
     /createElement\s*\(\s*['"]canvas['"]\s*\)/i.test(code) ||
-    /createElementNS\s*\([^)]*['"]canvas['"]/i.test(code) ||
-    /getElementById\s*\(\s*['"](c|canvas|myCanvas|stage)['"]\s*\)/i.test(code) ||
-    /querySelector\s*\(\s*['"]#?(c|canvas|myCanvas|stage)['"]\s*\)/i.test(code);
+    /createElementNS\s*\([^)]*['"]canvas['"]/i.test(code);
 }
 
 function compileCodeToHtml(code, controlled) {
@@ -297,7 +295,7 @@ function compileCodeToHtml(code, controlled) {
     '(function() {' +
     '  var findCanvas = function() {' +
     '    var all = document.querySelectorAll("canvas");' +
-    '    if (!all || all.length === 0) return document.getElementById("c");' +
+    '    if (!all || all.length === 0) return null;' +
     '    var largest = all[0];' +
     '    var maxArea = (largest.width || 0) * (largest.height || 0);' +
     '    for (var i = 1; i < all.length; i++) {' +
@@ -312,13 +310,25 @@ function compileCodeToHtml(code, controlled) {
     '  var origGet = document.getElementById.bind(document);' +
     '  document.getElementById = function(id) {' +
     '    var el = origGet(id);' +
-    '    if (!el && (id === "c" || id === "canvas" || id === "stage" || id === "myCanvas")) return findCanvas();' +
+    '    if (!el && (id === "c" || id === "canvas" || id === "stage" || id === "myCanvas")) {' +
+    '      var cv = findCanvas();' +
+    '      if (cv) {' +
+    '        if (!cv.id) cv.id = id;' +
+    '        return cv;' +
+    '      }' +
+    '    }' +
     '    return el;' +
     '  };' +
     '  var origQuery = document.querySelector.bind(document);' +
     '  document.querySelector = function(sel) {' +
     '    var el = origQuery(sel);' +
-    '    if (!el && (sel === "canvas" || sel === "#c" || sel === "#canvas")) return findCanvas();' +
+    '    if (!el && (sel === "canvas" || sel === "#c" || sel === "#canvas" || sel === "#stage" || sel === "#myCanvas")) {' +
+    '      var cv = findCanvas();' +
+    '      if (cv) {' +
+    '        if (!cv.id && sel.charAt(0) === "#") cv.id = sel.substring(1);' +
+    '        return cv;' +
+    '      }' +
+    '    }' +
     '    return el;' +
     '  };' +
     '  var setupGlobals = function() {' +
