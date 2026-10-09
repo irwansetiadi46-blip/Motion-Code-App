@@ -48,6 +48,7 @@ import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.SkyGlow
+import org.json.JSONObject
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -57,6 +58,7 @@ fun LiveAnimationViewport(
     bridge: WebCodecsBridge,
     reloadTrigger: Long,
     onWebViewReady: (WebView) -> Unit,
+    onWebViewDisposed: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     title: String = "REAL-TIME STAGE"
 ) {
@@ -88,17 +90,38 @@ fun LiveAnimationViewport(
         onWebViewReady(webView)
     }
 
-    // Reload content whenever code or resolution changes
-    LaunchedEffect(userCode, renderConfig.resolution, reloadTrigger) {
+    // Full load whenever resolution, fps, duration, or bitrate changes
+    LaunchedEffect(
+        renderConfig.resolution,
+        renderConfig.fps,
+        renderConfig.durationSeconds,
+        renderConfig.quality.bitrateBps
+    ) {
         val html = EngineHtmlBuilder.buildHtml(context, userCode, renderConfig)
         webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
+    }
+
+    // Fast, flicker-free live code reload whenever reloadTrigger updates
+    LaunchedEffect(reloadTrigger) {
+        if (reloadTrigger > 0L) {
+            val quoted = JSONObject.quote(userCode)
+            webView.evaluateJavascript(
+                "if (window.reloadPreviewWithCode) { window.reloadPreviewWithCode($quoted); } else { window.location.reload(); }",
+                null
+            )
+        }
     }
 
     DisposableEffect(webView) {
         onDispose {
             try {
-                // When disposing this viewport, clean parent if any
+                onWebViewDisposed?.invoke()
                 (webView.parent as? ViewGroup)?.removeView(webView)
+                webView.stopLoading()
+                webView.loadUrl("about:blank")
+                webView.clearHistory()
+                webView.removeAllViews()
+                webView.destroy()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -156,8 +179,11 @@ fun LiveAnimationViewport(
 
                 IconButton(
                     onClick = {
-                        val html = EngineHtmlBuilder.buildHtml(context, userCode, renderConfig)
-                        webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
+                        val quoted = JSONObject.quote(userCode)
+                        webView.evaluateJavascript(
+                            "if (window.reloadPreviewWithCode) { window.reloadPreviewWithCode($quoted); } else { window.location.reload(); }",
+                            null
+                        )
                     },
                     modifier = Modifier.size(32.dp)
                 ) {

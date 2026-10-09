@@ -1,9 +1,13 @@
 package com.example.viewmodel
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.webkit.WebView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.PresetRepository
@@ -82,7 +86,12 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
 
     val bridge = WebCodecsBridge(application, viewModelScope)
 
-    var boundWebView: WebView? = null
+    private var _boundWebView: WebView? = null
+    val boundWebView: WebView? get() = _boundWebView
+
+    fun bindWebView(wv: WebView?) {
+        _boundWebView = wv
+    }
 
     private var codeDebounceJob: Job? = null
 
@@ -205,16 +214,20 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun triggerRender() {
-        val wv = boundWebView
+        val wv = _boundWebView
         if (wv == null) {
             _renderState.value = RenderState.Error("Stage animasi belum siap. Buka tab Studio terlebih dahulu.")
             return
         }
         _renderState.value = RenderState.Preparing("Menyiapkan encoder...")
-        wv.evaluateJavascript(
-            "if (window.startVideoRender) { window.startVideoRender(); } else { window.AndroidBridge.onError('Engine belum siap.'); }",
-            null
-        )
+        try {
+            wv.evaluateJavascript(
+                "if (window.startVideoRender) { window.startVideoRender(); } else { window.AndroidBridge.onError('Engine belum siap.'); }",
+                null
+            )
+        } catch (e: Exception) {
+            _renderState.value = RenderState.Error("Gagal menjalankan render: ${e.message ?: "WebView tidak aktif"}")
+        }
     }
 
     fun cancelOrDismissRenderState() {
@@ -267,8 +280,15 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                     Toast.LENGTH_LONG
                 ).show()
             } else {
-                _downloadState.value = DownloadState.Error("Gagal men-download video ke penyimpanan lokal.")
-                Toast.makeText(getApplication(), "Gagal men-download video.", Toast.LENGTH_SHORT).show()
+                val isPermissionMissing = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                    ContextCompat.checkSelfPermission(getApplication(), Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                val errorMsg = if (isPermissionMissing) {
+                    "Butuh izin penyimpanan untuk download di Android versi ini."
+                } else {
+                    "Gagal men-download video ke penyimpanan lokal."
+                }
+                _downloadState.value = DownloadState.Error(errorMsg)
+                Toast.makeText(getApplication(), errorMsg, Toast.LENGTH_LONG).show()
             }
         }
     }

@@ -112,7 +112,10 @@ fun ExportScreen(
                 bridge = viewModel.bridge,
                 reloadTrigger = reloadTrigger,
                 onWebViewReady = { wv ->
-                    viewModel.boundWebView = wv
+                    viewModel.bindWebView(wv)
+                },
+                onWebViewDisposed = {
+                    viewModel.bindWebView(null)
                 },
                 title = "REAL-TIME ANIMATION VIEWPORT"
             )

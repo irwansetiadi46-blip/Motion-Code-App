@@ -218,7 +218,7 @@ fun CodeMotionApp(
                 NavigationTab.STUDIO -> {
                     StudioScreen(
                         viewModel = viewModel,
-                        onWebViewReady = { wv -> viewModel.boundWebView = wv },
+                        onWebViewReady = { wv -> viewModel.bindWebView(wv) },
                         onOpenFullscreen = { isFullscreenEditorOpen = true }
                     )
                 }

@@ -35,7 +35,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,10 +48,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.DarkBorder
@@ -68,8 +74,23 @@ fun CodeTerminalEditor(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val lineCount = remember(code) {
-        if (code.isEmpty()) 1 else code.lines().size
+
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(code, TextRange(code.length)))
+    }
+
+    LaunchedEffect(code) {
+        if (code != textFieldValue.text) {
+            val curPos = textFieldValue.selection.start.coerceIn(0, code.length)
+            textFieldValue = textFieldValue.copy(
+                text = code,
+                selection = TextRange(curPos)
+            )
+        }
+    }
+
+    val lineCount = remember(textFieldValue.text) {
+        if (textFieldValue.text.isEmpty()) 1 else textFieldValue.text.lines().size
     }
 
     val snippets = listOf(
@@ -190,7 +211,12 @@ fun CodeTerminalEditor(
                 snippets.forEach { (label, insertText) ->
                     Surface(
                         onClick = {
-                            onCodeChange(code + insertText)
+                            val currentVal = textFieldValue
+                            val sel = currentVal.selection
+                            val newText = currentVal.text.replaceRange(sel.start, sel.end, insertText)
+                            val newCursor = sel.start + insertText.length
+                            textFieldValue = TextFieldValue(newText, TextRange(newCursor))
+                            onCodeChange(newText)
                         },
                         shape = RoundedCornerShape(4.dp),
                         color = Color(0xFF1E293B),
@@ -244,7 +270,7 @@ fun CodeTerminalEditor(
                         .weight(1f)
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
-                    if (code.isEmpty()) {
+                    if (textFieldValue.text.isEmpty()) {
                         Text(
                             text = "// Tulis atau paste kode animasi canvas di sini...\n// Contoh: c.getContext('2d');\n// Wajib ada loop animasi.",
                             style = TextStyle(
@@ -257,8 +283,11 @@ fun CodeTerminalEditor(
                     }
 
                     BasicTextField(
-                        value = code,
-                        onValueChange = onCodeChange,
+                        value = textFieldValue,
+                        onValueChange = {
+                            textFieldValue = it
+                            onCodeChange(it.text)
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = TextStyle(
                             fontFamily = FontFamily.Monospace,

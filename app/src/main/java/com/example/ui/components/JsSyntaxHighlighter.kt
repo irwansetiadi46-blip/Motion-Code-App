@@ -108,10 +108,20 @@ object JsSyntaxHighlighter : VisualTransformation {
         return builder.toAnnotatedString()
     }
 
+    private var lastText: String? = null
+    private var lastResult: AnnotatedString? = null
+
     override fun filter(text: AnnotatedString): TransformedText {
-        return TransformedText(
-            text = highlight(text.text),
-            offsetMapping = OffsetMapping.Identity
-        )
+        val raw = text.text
+        if (raw.length > 20000) {
+            return TransformedText(text, OffsetMapping.Identity)
+        }
+        if (raw == lastText && lastResult != null) {
+            return TransformedText(lastResult!!, OffsetMapping.Identity)
+        }
+        val result = highlight(raw)
+        lastText = raw
+        lastResult = result
+        return TransformedText(result, OffsetMapping.Identity)
     }
 }

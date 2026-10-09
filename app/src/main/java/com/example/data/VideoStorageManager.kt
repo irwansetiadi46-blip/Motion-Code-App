@@ -1,12 +1,16 @@
 package com.example.data
 
+import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.model.SavedVideo
 import kotlinx.coroutines.Dispatchers
@@ -34,16 +38,37 @@ class VideoStorageManager(private val context: Context) {
             ?: return emptyList()
 
         return files.sortedByDescending { it.lastModified() }.map { file ->
-            SavedVideo(
-                id = file.nameWithoutExtension,
-                file = file,
-                title = file.name,
-                width = 1920,
-                height = 1080,
-                durationSeconds = 6.0f,
-                fileSizeBytes = file.length(),
-                createdAtMillis = file.lastModified()
-            )
+            val mmr = MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(file.absolutePath)
+                val w = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 1920
+                val h = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 1080
+                val durMs = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 6000L
+                val durationSec = durMs / 1000f
+                SavedVideo(
+                    id = file.nameWithoutExtension,
+                    file = file,
+                    title = file.name,
+                    width = w,
+                    height = h,
+                    durationSeconds = durationSec,
+                    fileSizeBytes = file.length(),
+                    createdAtMillis = file.lastModified()
+                )
+            } catch (e: Exception) {
+                SavedVideo(
+                    id = file.nameWithoutExtension,
+                    file = file,
+                    title = file.name,
+                    width = 1920,
+                    height = 1080,
+                    durationSeconds = 6.0f,
+                    fileSizeBytes = file.length(),
+                    createdAtMillis = file.lastModified()
+                )
+            } finally {
+                try { mmr.release() } catch (_: Exception) {}
+            }
         }
     }
 
@@ -61,6 +86,12 @@ class VideoStorageManager(private val context: Context) {
         videoFile: File,
         onProgress: suspend (Float) -> Unit
     ): Uri? = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED) {
+            return@withContext null
+        }
+
         try {
             val resolver = context.contentResolver
             val folderRelativePath = "${Environment.DIRECTORY_DOWNLOADS}/Code Motion Video"
