@@ -6,6 +6,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,10 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +51,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.DarkBorder
+import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.SkyGlow
 import com.example.ui.theme.TerminalBg
 import com.example.ui.theme.TerminalBorder
@@ -63,6 +63,7 @@ fun CodeTerminalEditor(
     code: String,
     onCodeChange: (String) -> Unit,
     onApplyCode: () -> Unit,
+    onOpenFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -80,6 +81,7 @@ fun CodeTerminalEditor(
         "W, H" to "W, H",
         "{ }" to "{\n  \n}",
         "( )" to "( )",
+        "[ ]" to "[ ]",
         ";" to ";",
         "=>" to " => ",
         "requestAnimationFrame" to "requestAnimationFrame(loop);",
@@ -121,7 +123,7 @@ fun CodeTerminalEditor(
                     )
                 }
 
-                // Action Buttons
+                // Header Action Buttons (Copy, Paste, Clear)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -207,7 +209,7 @@ fun CodeTerminalEditor(
                 }
             }
 
-            // Line numbers & Code text area
+            // Line numbers & Code text area with Syntax Highlighting
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -236,7 +238,7 @@ fun CodeTerminalEditor(
                     }
                 }
 
-                // Editor Text Field
+                // Editor Text Field with live Syntax Highlighting
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -264,7 +266,8 @@ fun CodeTerminalEditor(
                             lineHeight = 18.sp,
                             color = Color(0xFFE2E8F0)
                         ),
-                        cursorBrush = SolidColor(SkyGlow),
+                        cursorBrush = SolidColor(ElectricCyan),
+                        visualTransformation = JsSyntaxHighlighter,
                         keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.None,
                             autoCorrect = false
@@ -273,19 +276,35 @@ fun CodeTerminalEditor(
                 }
             }
 
-            // Bottom Apply Action
+            // Bottom Actions Bar
+            // KIRI BAWAH: Tombol icon edit untuk masuk mode fullscreen terminal (sama style dengan copy & paste)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF0F172A))
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.End
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // Tombol icon edit di kiri bawah container, style sama persis dengan copy/paste icon
+                IconButton(
+                    onClick = onOpenFullscreen,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Buka Mode Terminal Editor Full Screen",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+
+                // Kanan: Tombol Update Preview
                 Button(
                     onClick = onApplyCode,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                     shape = RoundedCornerShape(6.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,

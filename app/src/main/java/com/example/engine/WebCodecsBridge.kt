@@ -1,11 +1,16 @@
 package com.example.engine
 
+import android.content.Context
+import android.util.Base64
 import android.webkit.JavascriptInterface
+import com.example.data.VideoStorageManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
 
 sealed interface BridgeEvent {
     data class Progress(
@@ -15,16 +20,13 @@ sealed interface BridgeEvent {
         val status: String
     ) : BridgeEvent
 
-    data class StreamStart(
-        val filename: String,
+    data class Success(
+        val videoFile: File,
         val width: Int,
         val height: Int,
-        val durationSec: Float
+        val durationSec: Float,
+        val fileSizeBytes: Long
     ) : BridgeEvent
-
-    data class StreamChunk(val base64Chunk: String) : BridgeEvent
-
-    data class StreamEnd(val totalBytes: Long) : BridgeEvent
 
     data class Error(val message: String) : BridgeEvent
 
@@ -34,8 +36,19 @@ sealed interface BridgeEvent {
 }
 
 class WebCodecsBridge(
+    private val context: Context,
     private val scope: CoroutineScope
 ) {
+    private val storageManager = VideoStorageManager(context)
+    private val streamLock = Any()
+
+    private var activeOutputStream: FileOutputStream? = null
+    private var activeOutputFile: File? = null
+    private var streamFilename: String = ""
+    private var streamW: Int = 1920
+    private var streamH: Int = 1080
+    private var streamDuration: Float = 6f
+
     private val _events = MutableSharedFlow<BridgeEvent>(extraBufferCapacity = 64)
     val events = _events.asSharedFlow()
 
@@ -54,35 +67,82 @@ class WebCodecsBridge(
     }
 
     @JavascriptInterface
-    fun onStartStream(filename: String, width: Int, height: Int, durationSec: Double) {
-        scope.launch(Dispatchers.Main) {
-            _events.emit(
-                BridgeEvent.StreamStart(
-                    filename = filename,
-                    width = width,
-                    height = height,
-                    durationSec = durationSec.toFloat()
-                )
-            )
+    fun onStartStream(filename: String, width: Int, height: Int, durationSec: Double, totalBytes: Long) {
+        synchronized(streamLock) {
+            try {
+                // Close previous if any
+                activeOutputStream?.close()
+                val file = storageManager.createNewVideoFile(filename)
+                activeOutputFile = file
+                activeOutputStream = FileOutputStream(file)
+                streamFilename = filename
+                streamW = width
+                streamH = height
+                streamDuration = durationSec.toFloat()
+            } catch (e: Exception) {
+                onError("Gagal menyiapkan file output: ${e.message}")
+            }
         }
     }
 
     @JavascriptInterface
     fun onChunkStream(base64Chunk: String) {
-        scope.launch(Dispatchers.IO) {
-            _events.emit(BridgeEvent.StreamChunk(base64Chunk))
+        synchronized(streamLock) {
+            try {
+                val bytes = Base64.decode(base64Chunk, Base64.DEFAULT)
+                activeOutputStream?.write(bytes)
+            } catch (e: Exception) {
+                onError("Gagal menulis chunk ke file: ${e.message}")
+            }
         }
     }
 
     @JavascriptInterface
     fun onEndStream(totalBytes: Long) {
-        scope.launch(Dispatchers.Main) {
-            _events.emit(BridgeEvent.StreamEnd(totalBytes))
+        synchronized(streamLock) {
+            try {
+                activeOutputStream?.flush()
+                activeOutputStream?.close()
+                activeOutputStream = null
+
+                val file = activeOutputFile
+                if (file != null && file.exists() && file.length() > 0) {
+                    val finalFile = file
+                    val width = streamW
+                    val height = streamH
+                    val duration = streamDuration
+                    val size = file.length()
+
+                    scope.launch(Dispatchers.Main) {
+                        _events.emit(
+                            BridgeEvent.Success(
+                                videoFile = finalFile,
+                                width = width,
+                                height = height,
+                                durationSec = duration,
+                                fileSizeBytes = size
+                            )
+                        )
+                    }
+                } else {
+                    onError("File video kosong atau gagal disimpan.")
+                }
+            } catch (e: Exception) {
+                onError("Gagal menutup file: ${e.message}")
+            }
         }
     }
 
     @JavascriptInterface
     fun onError(errorMessage: String) {
+        synchronized(streamLock) {
+            try {
+                activeOutputStream?.close()
+                activeOutputStream = null
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         scope.launch(Dispatchers.Main) {
             _events.emit(BridgeEvent.Error(errorMessage))
         }

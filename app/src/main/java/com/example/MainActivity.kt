@@ -1,8 +1,6 @@
 package com.example
 
-import android.annotation.SuppressLint
 import android.os.Bundle
-import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -42,11 +40,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.FullScreenCodeEditorModal
 import com.example.ui.screens.ExportScreen
 import com.example.ui.screens.GalleryScreen
 import com.example.ui.screens.StudioScreen
@@ -63,7 +61,6 @@ import com.example.viewmodel.NavigationTab
 class MainActivity : ComponentActivity() {
 
     private val viewModel: CodeMotionViewModel by viewModels()
-    private var sharedWebView: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,13 +68,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyApplicationTheme {
-                CodeMotionApp(
-                    viewModel = viewModel,
-                    onWebViewReady = { wv ->
-                        sharedWebView = wv
-                    },
-                    getWebView = { sharedWebView }
-                )
+                CodeMotionApp(viewModel = viewModel)
             }
         }
     }
@@ -86,11 +77,11 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CodeMotionApp(
-    viewModel: CodeMotionViewModel,
-    onWebViewReady: (WebView) -> Unit,
-    getWebView: () -> WebView?
+    viewModel: CodeMotionViewModel
 ) {
     val activeTab by viewModel.activeTab.collectAsState()
+    val userCode by viewModel.userCode.collectAsState()
+    var isFullscreenEditorOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier
@@ -227,13 +218,13 @@ fun CodeMotionApp(
                 NavigationTab.STUDIO -> {
                     StudioScreen(
                         viewModel = viewModel,
-                        onWebViewReady = onWebViewReady
+                        onWebViewReady = { wv -> viewModel.boundWebView = wv },
+                        onOpenFullscreen = { isFullscreenEditorOpen = true }
                     )
                 }
                 NavigationTab.EXPORT -> {
                     ExportScreen(
-                        viewModel = viewModel,
-                        webView = getWebView()
+                        viewModel = viewModel
                     )
                 }
                 NavigationTab.TEMPLATES -> {
@@ -246,6 +237,18 @@ fun CodeMotionApp(
                         viewModel = viewModel
                     )
                 }
+            }
+
+            // Mode Terminal Fullscreen Termux (Bersih satu layar HP tanpa tombol sampah/caption)
+            if (isFullscreenEditorOpen) {
+                FullScreenCodeEditorModal(
+                    code = userCode,
+                    onCodeChange = { viewModel.updateCode(it) },
+                    onDismiss = {
+                        isFullscreenEditorOpen = false
+                        viewModel.applyCodeToPreview()
+                    }
+                )
             }
         }
     }

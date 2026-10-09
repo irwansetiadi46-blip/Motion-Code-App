@@ -1,5 +1,6 @@
 package com.example.data
 
+import android.app.DownloadManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -7,7 +8,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.Base64
 import androidx.core.content.FileProvider
 import com.example.model.SavedVideo
 import kotlinx.coroutines.Dispatchers
@@ -18,11 +18,10 @@ import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 
 class VideoStorageManager(private val context: Context) {
 
-    private val videoDir: File
+    val videoDir: File
         get() {
             val dir = File(context.filesDir, "videos")
             if (!dir.exists()) dir.mkdirs()
@@ -38,7 +37,7 @@ class VideoStorageManager(private val context: Context) {
                 id = file.nameWithoutExtension,
                 file = file,
                 title = file.name,
-                width = 1920, // default metadata fallback
+                width = 1920,
                 height = 1080,
                 durationSeconds = 6.0f,
                 fileSizeBytes = file.length(),
@@ -47,16 +46,49 @@ class VideoStorageManager(private val context: Context) {
         }
     }
 
-    suspend fun createNewVideoFile(filenamePrefix: String): File = withContext(Dispatchers.IO) {
+    fun createNewVideoFile(filenamePrefix: String): File {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val name = "${filenamePrefix}_${timestamp}.mp4"
-        File(videoDir, name)
+        return File(videoDir, name)
     }
 
-    suspend fun appendChunkToFile(file: File, base64Chunk: String) = withContext(Dispatchers.IO) {
-        val bytes = Base64.decode(base64Chunk, Base64.DEFAULT)
-        FileOutputStream(file, true).use { out ->
-            out.write(bytes)
+    suspend fun downloadToPublicDownloadFolder(videoFile: File): Uri? = withContext(Dispatchers.IO) {
+        try {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, videoFile.name)
+                put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/CodeMotion")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            }
+
+            val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            } else {
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            }
+
+            val uri = resolver.insert(collection, contentValues) ?: return@withContext null
+
+            resolver.openOutputStream(uri)?.use { outputStream: OutputStream ->
+                videoFile.inputStream().use { inputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, contentValues, null, null)
+            }
+
+            uri
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
         }
     }
 

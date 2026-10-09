@@ -49,6 +49,7 @@ object EngineHtmlBuilder {
       display: flex;
       align-items: center;
       justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     #viewportWrap {
       position: relative;
@@ -59,7 +60,7 @@ object EngineHtmlBuilder {
       justify-content: center;
       overflow: hidden;
     }
-    #renderCanvasWrap {
+    #stageScaler {
       position: absolute;
       top: 50%;
       left: 50%;
@@ -68,29 +69,44 @@ object EngineHtmlBuilder {
       height: ${targetH}px;
       transform-origin: center center;
     }
-    #renderCanvasWrap iframe {
+    #stageScaler iframe {
       width: 100%;
       height: 100%;
       border: none;
       display: block;
       background: #000;
     }
+    #renderBanner {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(2, 132, 199, 0.85);
+      backdrop-filter: blur(4px);
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      display: none;
+      z-index: 100;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
   </style>
   <script>
-    // Offline MP4 Muxer bundle
     $muxerScript
   </script>
 </head>
 <body>
 
 <div id="viewportWrap">
-  <div id="renderCanvasWrap">
-    <iframe id="animIframe" title="Live Stage"></iframe>
+  <div id="renderBanner">🔴 RENDERING PREVIEW...</div>
+  <div id="stageScaler">
+    <iframe id="liveFrame" title="Stage"></iframe>
   </div>
 </div>
 
 <script>
-// Deterministic Harness Code
 const HARNESS_SOURCE = `
 (function () {
   var OriginalDate = Date;
@@ -155,7 +171,8 @@ const HARNESS_SOURCE = `
         try { pending[i][1](virtualTime); } catch (e) { console.error('Harness RAF err:', e); }
       }
     },
-    getTime: function () { return virtualTime; }
+    getTime: function () { return virtualTime; },
+    isControlled: function () { return isControlled; }
   };
 })();
 `;
@@ -167,14 +184,6 @@ const DURATION = $duration;
 const BITRATE = $bitrate;
 
 let userCodeRaw = ${escapeJsString(normalizedCode)};
-
-function logToAndroid(msg) {
-  if (window.AndroidBridge && window.AndroidBridge.onConsoleLog) {
-    window.AndroidBridge.onConsoleLog(String(msg));
-  } else {
-    console.log(msg);
-  }
-}
 
 function postProgress(current, total, progress, status) {
   if (window.AndroidBridge && window.AndroidBridge.onProgress) {
@@ -192,7 +201,7 @@ function postError(err) {
 
 function fitViewport() {
   const wrap = document.getElementById('viewportWrap');
-  const stage = document.getElementById('renderCanvasWrap');
+  const stage = document.getElementById('stageScaler');
   if (!wrap || !stage) return;
   const cw = wrap.clientWidth || window.innerWidth;
   const ch = wrap.clientHeight || window.innerHeight;
@@ -219,11 +228,11 @@ function getCompiledHtml(code, controlled) {
     '</body></html>';
 }
 
-function loadLivePreview(code) {
-  const iframe = document.getElementById('animIframe');
+function loadLivePreview(code, controlled) {
+  const iframe = document.getElementById('liveFrame');
   const doc = iframe.contentDocument || iframe.contentWindow.document;
   doc.open();
-  doc.write(getCompiledHtml(code, false));
+  doc.write(getCompiledHtml(code, controlled || false));
   doc.close();
 
   iframe.onload = function() {
@@ -234,55 +243,39 @@ function loadLivePreview(code) {
   };
 }
 
-// Initial load
-loadLivePreview(userCodeRaw);
-setTimeout(fitViewport, 100);
+loadLivePreview(userCodeRaw, false);
+setTimeout(fitViewport, 80);
 
-// API exposed to Kotlin
 window.reloadPreviewWithCode = function(newCode) {
   userCodeRaw = newCode;
-  loadLivePreview(userCodeRaw);
+  loadLivePreview(userCodeRaw, false);
 };
 
 window.startVideoRender = async function() {
+  const banner = document.getElementById('renderBanner');
   try {
+    if (banner) banner.style.display = 'block';
     postProgress(0, DURATION * FPS, 0.0, "Menyiapkan stage render " + TARGET_W + "×" + TARGET_H + "...");
 
-    // Create offscreen deterministic iframe
-    const renderIframe = document.createElement('iframe');
-    renderIframe.style.cssText = 'position:fixed;top:0;left:-99999px;width:' + TARGET_W + 'px;height:' + TARGET_H + 'px;border:none;visibility:hidden;';
-    document.body.appendChild(renderIframe);
+    // Render directly in the live visible stage so Chromium GPU compositor keeps it active and user sees preview!
+    loadLivePreview(userCodeRaw, true);
+    await new Promise(r => setTimeout(r, 400));
 
-    await new Promise((resolve, reject) => {
-      let resolved = false;
-      renderIframe.onload = () => { if (!resolved) { resolved = true; resolve(); } };
-      try {
-        const idoc = renderIframe.contentDocument;
-        idoc.open();
-        idoc.write(getCompiledHtml(userCodeRaw, true));
-        idoc.close();
-      } catch (e) { reject(e); }
-      setTimeout(() => { if (!resolved) { resolved = true; resolve(); } }, 4000);
-    });
+    const iframe = document.getElementById('liveFrame');
+    const iwin = iframe.contentWindow;
+    const idoc = iframe.contentDocument;
 
-    await new Promise(r => setTimeout(r, 300));
-
-    const iwin = renderIframe.contentWindow;
-    const idoc = renderIframe.contentDocument;
-    if (!iwin.__HARNESS__) throw new Error("Harness gagal terpasang di frame render.");
-
+    if (!iwin.__HARNESS__) throw new Error("Harness gagal terpasang.");
     const canvas = idoc.querySelector('canvas') || idoc.getElementById('c');
-    if (!canvas) throw new Error("Elemen <canvas> tidak ditemukan.");
+    if (!canvas) throw new Error("Elemen <canvas> tidak ditemukan di dalam kode.");
+
     canvas.width = TARGET_W;
     canvas.height = TARGET_H;
-
-    try { iwin.dispatchEvent(new iwin.Event('resize')); } catch(e){}
 
     const totalFrames = Math.round(DURATION * FPS);
     const frameDurationUs = Math.round(1_000_000 / FPS);
     const keyFrameInterval = Math.max(1, Math.round(FPS * 2));
 
-    // Check Muxer
     const MuxerLib = window.Mp4Muxer || window.mp4Muxer;
     if (!MuxerLib || !MuxerLib.Muxer) {
       throw new Error("Pustaka MP4 Muxer belum siap.");
@@ -298,9 +291,8 @@ window.startVideoRender = async function() {
       fastStart: 'in-memory'
     });
 
-    // Check VideoEncoder
     if (typeof VideoEncoder === 'undefined') {
-      throw new Error("Hardware VideoEncoder tidak tersedia di WebView ini.");
+      throw new Error("Hardware VideoEncoder tidak tersedia di perangkat ini.");
     }
 
     function pickCodec(w, h, f) {
@@ -316,9 +308,8 @@ window.startVideoRender = async function() {
       return 'avc1.6400' + level;
     }
 
-    let codec = pickCodec(TARGET_W, TARGET_H, FPS);
     let config = {
-      codec: codec,
+      codec: pickCodec(TARGET_W, TARGET_H, FPS),
       width: TARGET_W,
       height: TARGET_H,
       bitrate: BITRATE,
@@ -328,12 +319,16 @@ window.startVideoRender = async function() {
 
     let support = await VideoEncoder.isConfigSupported(config);
     if (!support.supported) {
-      config.codec = 'avc1.42001f';
-      config.latencyMode = 'realtime';
+      config.codec = 'avc1.4d0034';
       support = await VideoEncoder.isConfigSupported(config);
       if (!support.supported) {
-        config.codec = 'avc1.4d002a';
+        config.codec = 'avc1.42001f';
+        config.latencyMode = 'realtime';
         support = await VideoEncoder.isConfigSupported(config);
+        if (!support.supported) {
+          config.codec = 'avc1.4d002a';
+          support = await VideoEncoder.isConfigSupported(config);
+        }
       }
     }
 
@@ -350,11 +345,12 @@ window.startVideoRender = async function() {
     const dt = 1000 / FPS;
     harness.step(0);
 
-    postProgress(0, totalFrames, 0.0, "Merender 0/" + totalFrames + " frame...");
+    postProgress(0, totalFrames, 0.0, "Merender frame 0/" + totalFrames + "...");
 
     for (let i = 0; i < totalFrames; i++) {
       if (encoderError) throw encoderError;
 
+      // Deterministic virtual time step
       harness.step(dt);
 
       const frame = new VideoFrame(canvas, {
@@ -365,15 +361,19 @@ window.startVideoRender = async function() {
       encoder.encode(frame, { keyFrame: (i % keyFrameInterval === 0) });
       frame.close();
 
-      if (i % 6 === 0 || i === totalFrames - 1) {
+      // Update progress and allow UI to breathe
+      if (i % 4 === 0 || i === totalFrames - 1) {
         const prog = (i + 1) / totalFrames;
         const pct = Math.round(prog * 100);
         postProgress(i + 1, totalFrames, prog, "Merender frame " + (i + 1) + "/" + totalFrames + " (" + pct + "%)");
         await new Promise(r => setTimeout(r, 0));
       }
 
-      while (encoder.encodeQueueSize > 5) {
-        await new Promise(r => setTimeout(r, 1));
+      // Safety-bounded queue draining: never freeze even on heavy frames
+      let waitIter = 0;
+      while (encoder.encodeQueueSize > 4 && waitIter < 35) {
+        await new Promise(r => setTimeout(r, 8));
+        waitIter++;
         if (encoderError) throw encoderError;
       }
     }
@@ -388,21 +388,23 @@ window.startVideoRender = async function() {
       throw new Error("Hasil encoding kosong.");
     }
 
-    // Stream buffer to Android Kotlin in chunks
-    const totalBytes = buffer.byteLength;
-    const filename = "codemotion_" + TARGET_W + "x" + TARGET_H + "_" + Date.now();
-    
+    const uint8 = new Uint8Array(buffer);
+    const totalBytes = uint8.byteLength;
+    const filename = "footage_" + TARGET_W + "x" + TARGET_H + "_" + FPS + "fps";
+
     if (window.AndroidBridge && window.AndroidBridge.onStartStream) {
-      window.AndroidBridge.onStartStream(filename, TARGET_W, TARGET_H, DURATION);
+      window.AndroidBridge.onStartStream(filename, TARGET_W, TARGET_H, DURATION, totalBytes);
     }
 
-    const uint8 = new Uint8Array(buffer);
-    const CHUNK_SIZE = 128 * 1024; // 128KB chunks
+    // Stream to Android in safe, fast 64KB blocks with 8KB sub-chunk conversion
+    const CHUNK_SIZE = 64 * 1024;
     for (let offset = 0; offset < totalBytes; offset += CHUNK_SIZE) {
       const slice = uint8.subarray(offset, Math.min(offset + CHUNK_SIZE, totalBytes));
       let binary = '';
-      for (let j = 0; j < slice.length; j++) {
-        binary += String.fromCharCode(slice[j]);
+      const subStep = 8192;
+      for (let s = 0; s < slice.length; s += subStep) {
+        const sub = slice.subarray(s, Math.min(s + subStep, slice.length));
+        binary += String.fromCharCode.apply(null, sub);
       }
       const b64 = btoa(binary);
       if (window.AndroidBridge && window.AndroidBridge.onChunkStream) {
@@ -414,10 +416,15 @@ window.startVideoRender = async function() {
       window.AndroidBridge.onEndStream(totalBytes);
     }
 
-    if (renderIframe.parentNode) renderIframe.parentNode.removeChild(renderIframe);
+    // Restore live interactive preview
+    loadLivePreview(userCodeRaw, false);
 
   } catch (err) {
     postError("Gagal merender video: " + (err.message || err));
+    // Restore live preview on error
+    loadLivePreview(userCodeRaw, false);
+  } finally {
+    if (banner) banner.style.display = 'none';
   }
 };
 </script>
@@ -433,7 +440,6 @@ window.startVideoRender = async function() {
         return if (!looksLikeHtml) {
             trimmed
         } else {
-            // Extract script content or return as is
             trimmed
         }
     }

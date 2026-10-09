@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.PresetRepository
 import com.example.model.RenderConfig
 import com.example.model.VideoResolution
+import com.example.ui.components.JsSyntaxHighlighter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -40,5 +41,12 @@ class ExampleRobolectricTest {
       fps = 60
     )
     assertEquals(360, config.totalFrames)
+  }
+
+  @Test
+  fun `js syntax highlighter applies styles to code`() {
+    val sampleCode = "const x = 42; // comment\nctx.fillRect(0, 0, W, H);"
+    val highlighted = JsSyntaxHighlighter.highlight(sampleCode)
+    assertTrue(highlighted.spanStyles.isNotEmpty())
   }
 }

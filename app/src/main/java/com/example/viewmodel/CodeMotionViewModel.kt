@@ -52,19 +52,18 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     private val _selectedVideoForPlayback = MutableStateFlow<SavedVideo?>(null)
     val selectedVideoForPlayback: StateFlow<SavedVideo?> = _selectedVideoForPlayback.asStateFlow()
 
+    private val _lastRenderedVideo = MutableStateFlow<SavedVideo?>(null)
+    val lastRenderedVideo: StateFlow<SavedVideo?> = _lastRenderedVideo.asStateFlow()
+
     private val _activeTab = MutableStateFlow(NavigationTab.STUDIO)
     val activeTab: StateFlow<NavigationTab> = _activeTab.asStateFlow()
 
     private val _reloadPreviewTrigger = MutableStateFlow(0L)
     val reloadPreviewTrigger: StateFlow<Long> = _reloadPreviewTrigger.asStateFlow()
 
-    private var currentOutputVideoFile: File? = null
-    private var currentStreamFilename: String = ""
-    private var currentStreamW: Int = 1920
-    private var currentStreamH: Int = 1080
-    private var currentStreamDuration: Float = 6.0f
+    val bridge = WebCodecsBridge(application, viewModelScope)
 
-    val bridge = WebCodecsBridge(viewModelScope)
+    var boundWebView: WebView? = null
 
     init {
         loadSavedVideos()
@@ -84,58 +83,48 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                         )
                     }
 
-                    is BridgeEvent.StreamStart -> {
-                        currentStreamFilename = event.filename
-                        currentStreamW = event.width
-                        currentStreamH = event.height
-                        currentStreamDuration = event.durationSec
-                        currentOutputVideoFile = storageManager.createNewVideoFile(event.filename)
-                        _renderState.value = RenderState.Finalizing("Menerima data MP4...")
-                    }
+                    is BridgeEvent.Success -> {
+                        val saved = SavedVideo(
+                            id = event.videoFile.nameWithoutExtension,
+                            file = event.videoFile,
+                            title = event.videoFile.name,
+                            width = event.width,
+                            height = event.height,
+                            durationSeconds = event.durationSec,
+                            fileSizeBytes = event.fileSizeBytes,
+                            createdAtMillis = System.currentTimeMillis()
+                        )
 
-                    is BridgeEvent.StreamChunk -> {
-                        currentOutputVideoFile?.let { file ->
-                            storageManager.appendChunkToFile(file, event.base64Chunk)
-                        }
-                    }
+                        _renderState.value = RenderState.Success(
+                            videoFile = event.videoFile,
+                            width = event.width,
+                            height = event.height,
+                            durationSeconds = event.durationSec,
+                            fileSizeBytes = event.fileSizeBytes
+                        )
 
-                    is BridgeEvent.StreamEnd -> {
-                        val file = currentOutputVideoFile
-                        if (file != null && file.exists() && file.length() > 0) {
-                            _renderState.value = RenderState.Success(
-                                videoFile = file,
-                                width = currentStreamW,
-                                height = currentStreamH,
-                                durationSeconds = currentStreamDuration,
-                                fileSizeBytes = file.length()
-                            )
-                            loadSavedVideos()
-                            val saved = SavedVideo(
-                                id = file.nameWithoutExtension,
-                                file = file,
-                                title = file.name,
-                                width = currentStreamW,
-                                height = currentStreamH,
-                                durationSeconds = currentStreamDuration,
-                                fileSizeBytes = file.length(),
-                                createdAtMillis = System.currentTimeMillis()
-                            )
-                            _selectedVideoForPlayback.value = saved
-                        } else {
-                            _renderState.value = RenderState.Error("Gagal menulis file video (file kosong).")
-                        }
+                        _lastRenderedVideo.value = saved
+                        _selectedVideoForPlayback.value = saved
+                        loadSavedVideos()
+
+                        Toast.makeText(
+                            getApplication(),
+                            "✅ Render Selesai! Video siap diputar atau di-download.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
 
                     is BridgeEvent.Error -> {
                         _renderState.value = RenderState.Error(event.message)
+                        Toast.makeText(getApplication(), "❌ Render Gagal: ${event.message}", Toast.LENGTH_LONG).show()
                     }
 
                     is BridgeEvent.PreviewLoaded -> {
-                        // Preview successfully rendered
+                        // Preview loaded
                     }
 
                     is BridgeEvent.Log -> {
-                        // Debug log from WebView
+                        // Debug log
                     }
                 }
             }
@@ -153,7 +142,6 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     fun selectPreset(preset: VideoPreset) {
         _selectedPreset.value = preset
         _userCode.value = preset.code
-        // Match default duration & fps if wanted
         _renderConfig.update {
             it.copy(
                 durationSeconds = preset.defaultDuration,
@@ -169,7 +157,7 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun updateDuration(duration: Int) {
-        val clamped = duration.coerceIn(3, 60)
+        val clamped = duration.coerceIn(3, 30)
         _renderConfig.update { it.copy(durationSeconds = clamped) }
     }
 
@@ -185,13 +173,17 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
         _activeTab.value = tab
     }
 
-    fun triggerRender(webView: WebView?) {
-        if (webView == null) {
-            _renderState.value = RenderState.Error("WebView engine belum terhubung.")
+    fun triggerRender() {
+        val wv = boundWebView
+        if (wv == null) {
+            _renderState.value = RenderState.Error("Stage animasi belum siap. Buka tab Studio terlebih dahulu.")
             return
         }
-        _renderState.value = RenderState.Preparing("Menginisialisasi pipeline render...")
-        webView.evaluateJavascript("if (window.startVideoRender) { window.startVideoRender(); } else { window.AndroidBridge.onError('Fungsi startVideoRender tidak tersedia.'); }", null)
+        _renderState.value = RenderState.Preparing("Menyiapkan encoder...")
+        wv.evaluateJavascript(
+            "if (window.startVideoRender) { window.startVideoRender(); } else { window.AndroidBridge.onError('Engine belum siap.'); }",
+            null
+        )
     }
 
     fun cancelOrDismissRenderState() {
@@ -208,11 +200,26 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
         _selectedVideoForPlayback.value = video
     }
 
+    fun downloadVideo(video: SavedVideo) {
+        viewModelScope.launch {
+            val uri = storageManager.downloadToPublicDownloadFolder(video.file)
+            if (uri != null) {
+                Toast.makeText(
+                    getApplication(),
+                    "⬇ Video berhasil di-download ke folder Download / Galeri:\n${video.file.name}",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                Toast.makeText(getApplication(), "Gagal men-download video.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     fun saveVideoToGallery(video: SavedVideo) {
         viewModelScope.launch {
             val uri = storageManager.saveToDeviceGallery(video.file)
             val msg = if (uri != null) {
-                "Berhasil disimpan ke Galeri (Movies/CodeMotion)"
+                "✅ Berhasil disimpan ke Galeri (Movies/CodeMotion)"
             } else {
                 "Gagal menyimpan ke Galeri"
             }
@@ -229,6 +236,9 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
             storageManager.deleteVideo(video.file)
             if (_selectedVideoForPlayback.value?.id == video.id) {
                 _selectedVideoForPlayback.value = null
+            }
+            if (_lastRenderedVideo.value?.id == video.id) {
+                _lastRenderedVideo.value = null
             }
             loadSavedVideos()
             Toast.makeText(getApplication(), "Video dihapus", Toast.LENGTH_SHORT).show()

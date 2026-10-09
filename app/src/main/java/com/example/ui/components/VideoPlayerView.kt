@@ -1,8 +1,6 @@
 package com.example.ui.components
 
-import android.media.MediaPlayer
 import android.net.Uri
-import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -24,7 +22,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,7 +34,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -48,7 +44,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -65,12 +60,12 @@ import java.text.DecimalFormat
 @Composable
 fun VideoPlayerView(
     video: SavedVideo,
-    onSaveToGallery: () -> Unit,
+    onDownload: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSaveToGallery: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current
     var isPlaying by remember { mutableStateOf(false) }
     var currentPosMs by remember { mutableIntStateOf(0) }
     var durationMs by remember { mutableIntStateOf(0) }
@@ -96,7 +91,7 @@ fun VideoPlayerView(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        border = BorderStroke(1.dp, DarkBorder)
+        border = BorderStroke(1.dp, Color(0xFF0284C7))
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Player Stage
@@ -129,7 +124,7 @@ fun VideoPlayerView(
                     }
                 )
 
-                // Play / Pause Overlay Button
+                // Play / Pause Overlay
                 IconButton(
                     onClick = {
                         videoViewRef?.let { vv ->
@@ -145,7 +140,7 @@ fun VideoPlayerView(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(RoundedCornerShape(24.dp))
-                        .background(Color.Black.copy(alpha = 0.5f))
+                        .background(Color.Black.copy(alpha = 0.55f))
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -156,18 +151,19 @@ fun VideoPlayerView(
                 }
             }
 
-            // Info Bar & Timestamp
+            // Info Bar & Details
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = video.title,
                             style = MaterialTheme.typography.titleSmall.copy(
@@ -178,7 +174,7 @@ fun VideoPlayerView(
                         )
                         val sizeMb = DecimalFormat("#.##").format(video.fileSizeBytes / (1024f * 1024f))
                         Text(
-                            text = "${video.width}×${video.height} • ${sizeMb} MB MP4",
+                            text = "${video.width}×${video.height} • ${sizeMb} MB MP4 H.264",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontFamily = FontFamily.Monospace,
                                 color = Color(0xFF94A3B8)
@@ -203,28 +199,35 @@ fun VideoPlayerView(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                // Primary Prominent Download Button
+                Button(
+                    onClick = onDownload,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "⬇ Download MP4",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    )
+                }
 
-                // Action Buttons Row
+                // Secondary Action Buttons Row (Share, Save to Gallery, Delete)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
-                        onClick = onSaveToGallery,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Simpan Galeri", fontSize = 12.sp)
-                    }
-
                     OutlinedButton(
                         onClick = onShare,
                         modifier = Modifier.weight(1f),
@@ -239,6 +242,18 @@ fun VideoPlayerView(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Bagikan", fontSize = 12.sp)
+                    }
+
+                    if (onSaveToGallery != null) {
+                        OutlinedButton(
+                            onClick = onSaveToGallery,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = BorderStroke(1.dp, DarkBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Ke Galeri", fontSize = 12.sp)
+                        }
                     }
 
                     IconButton(

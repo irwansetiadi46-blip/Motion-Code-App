@@ -145,6 +145,7 @@ fun GalleryScreen(
             if (selectedVideo != null) {
                 VideoPlayerView(
                     video = selectedVideo!!,
+                    onDownload = { viewModel.downloadVideo(selectedVideo!!) },
                     onSaveToGallery = { viewModel.saveVideoToGallery(selectedVideo!!) },
                     onShare = { viewModel.shareVideo(selectedVideo!!) },
                     onDelete = { viewModel.deleteVideo(selectedVideo!!) }

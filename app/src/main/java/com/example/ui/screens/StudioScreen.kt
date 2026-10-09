@@ -19,13 +19,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MovieCreation
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,9 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.data.PresetRepository
-import com.example.model.VideoPreset
 import com.example.ui.components.CodeTerminalEditor
 import com.example.ui.components.LiveAnimationViewport
 import com.example.ui.theme.DarkBackground
@@ -53,6 +48,7 @@ import com.example.viewmodel.NavigationTab
 fun StudioScreen(
     viewModel: CodeMotionViewModel,
     onWebViewReady: (WebView) -> Unit,
+    onOpenFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val userCode by viewModel.userCode.collectAsState()
@@ -114,7 +110,8 @@ fun StudioScreen(
             renderConfig = renderConfig,
             bridge = viewModel.bridge,
             reloadTrigger = reloadTrigger,
-            onWebViewReady = onWebViewReady
+            onWebViewReady = onWebViewReady,
+            title = "LIVE ANIMATION STAGE"
         )
 
         // Navigation CTA to Export
@@ -141,7 +138,7 @@ fun StudioScreen(
             }
         }
 
-        // Code Editor
+        // Code Editor with Fullscreen Trigger & Syntax Highlighting
         Column {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -156,7 +153,7 @@ fun StudioScreen(
                     )
                 )
                 Text(
-                    text = "Real-time sync",
+                    text = "Sintaksis Aktif",
                     style = MaterialTheme.typography.labelSmall.copy(color = ElectricCyan)
                 )
             }
@@ -164,10 +161,11 @@ fun StudioScreen(
             CodeTerminalEditor(
                 code = userCode,
                 onCodeChange = { viewModel.updateCode(it) },
-                onApplyCode = { viewModel.applyCodeToPreview() }
+                onApplyCode = { viewModel.applyCodeToPreview() },
+                onOpenFullscreen = onOpenFullscreen
             )
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(60.dp))
     }
 }

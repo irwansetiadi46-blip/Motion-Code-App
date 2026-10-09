@@ -7,7 +7,6 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,9 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AspectRatio
-import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -62,7 +58,7 @@ fun LiveAnimationViewport(
     reloadTrigger: Long,
     onWebViewReady: (WebView) -> Unit,
     modifier: Modifier = Modifier,
-    onExpandClicked: (() -> Unit)? = null
+    title: String = "REAL-TIME STAGE"
 ) {
     val context = LocalContext.current
     val aspect = renderConfig.resolution.aspectRatioFloat
@@ -98,10 +94,11 @@ fun LiveAnimationViewport(
         webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(webView) {
         onDispose {
             try {
-                webView.stopLoading()
+                // When disposing this viewport, clean parent if any
+                (webView.parent as? ViewGroup)?.removeView(webView)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -135,7 +132,7 @@ fun LiveAnimationViewport(
                             .background(Color(0xFF10B981))
                     )
                     Text(
-                        text = "REAL-TIME STAGE",
+                        text = title,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 1.sp,
@@ -157,35 +154,19 @@ fun LiveAnimationViewport(
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = {
-                            val html = EngineHtmlBuilder.buildHtml(context, userCode, renderConfig)
-                            webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
-                        },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Muat Ulang Preview",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    if (onExpandClicked != null) {
-                        IconButton(
-                            onClick = onExpandClicked,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Fullscreen,
-                                contentDescription = "Layar Penuh",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
+                IconButton(
+                    onClick = {
+                        val html = EngineHtmlBuilder.buildHtml(context, userCode, renderConfig)
+                        webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Muat Ulang Preview",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
 
@@ -196,7 +177,7 @@ fun LiveAnimationViewport(
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
-                val clampedAspect = aspect.coerceIn(0.4f, 2.5f)
+                val clampedAspect = aspect.coerceIn(0.45f, 2.2f)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -204,7 +185,10 @@ fun LiveAnimationViewport(
                         .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
                 ) {
                     AndroidView(
-                        factory = { webView },
+                        factory = {
+                            (webView.parent as? ViewGroup)?.removeView(webView)
+                            webView
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
                 }

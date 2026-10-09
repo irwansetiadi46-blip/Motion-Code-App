@@ -20,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
@@ -51,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.QualityBitrate
 import com.example.model.RenderState
-import com.example.model.SavedVideo
+import com.example.ui.components.LiveAnimationViewport
 import com.example.ui.components.ResolutionSelector
 import com.example.ui.components.VideoPlayerView
 import com.example.ui.theme.DarkBackground
@@ -59,7 +58,6 @@ import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.ElectricCyan
-import com.example.ui.theme.MatrixGreen
 import com.example.ui.theme.SkyGlow
 import com.example.viewmodel.CodeMotionViewModel
 import java.text.DecimalFormat
@@ -67,12 +65,13 @@ import java.text.DecimalFormat
 @Composable
 fun ExportScreen(
     viewModel: CodeMotionViewModel,
-    webView: WebView?,
     modifier: Modifier = Modifier
 ) {
+    val userCode by viewModel.userCode.collectAsState()
     val renderConfig by viewModel.renderConfig.collectAsState()
     val renderState by viewModel.renderState.collectAsState()
     val selectedVideo by viewModel.selectedVideoForPlayback.collectAsState()
+    val reloadTrigger by viewModel.reloadPreviewTrigger.collectAsState()
 
     val fpsOptions = listOf(24, 30, 60)
 
@@ -84,8 +83,37 @@ fun ExportScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Section 2: Preview Render (Active Live Stage)
+        Column {
+            Text(
+                text = "2. Preview Render & Animasi",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Viewport preview = resolusi output (${renderConfig.resolution.width}×${renderConfig.resolution.height}). Pratinjau frame yang sedang di-render akan tampil di sini secara real-time.",
+                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF94A3B8))
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LiveAnimationViewport(
+                userCode = userCode,
+                renderConfig = renderConfig,
+                bridge = viewModel.bridge,
+                reloadTrigger = reloadTrigger,
+                onWebViewReady = { wv ->
+                    viewModel.boundWebView = wv
+                },
+                title = "PREVIEW RENDER (LIVE)"
+            )
+        }
+
+        // Section 3: Konfigurasi Export
         Text(
-            text = "Pengaturan Export Video",
+            text = "3. Konfigurasi Export",
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = Color.White
@@ -298,7 +326,7 @@ fun ExportScreen(
         // Render Action Button
         val isRendering = renderState is RenderState.Rendering || renderState is RenderState.Preparing || renderState is RenderState.Finalizing
         Button(
-            onClick = { viewModel.triggerRender(webView) },
+            onClick = { viewModel.triggerRender() },
             enabled = !isRendering,
             modifier = Modifier
                 .fillMaxWidth()
@@ -412,22 +440,25 @@ fun ExportScreen(
             }
         }
 
-        // Output Video Player when available
+        // Section 4: Output Video
         if (selectedVideo != null) {
-            Text(
-                text = "Output Video Terakhir",
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "4. Output Video",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
                 )
-            )
 
-            VideoPlayerView(
-                video = selectedVideo!!,
-                onSaveToGallery = { viewModel.saveVideoToGallery(selectedVideo!!) },
-                onShare = { viewModel.shareVideo(selectedVideo!!) },
-                onDelete = { viewModel.deleteVideo(selectedVideo!!) }
-            )
+                VideoPlayerView(
+                    video = selectedVideo!!,
+                    onDownload = { viewModel.downloadVideo(selectedVideo!!) },
+                    onShare = { viewModel.shareVideo(selectedVideo!!) },
+                    onDelete = { viewModel.deleteVideo(selectedVideo!!) },
+                    onSaveToGallery = { viewModel.saveVideoToGallery(selectedVideo!!) }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
