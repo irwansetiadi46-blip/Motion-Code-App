@@ -1,0 +1,6 @@
+{
+  "name": "CodeMotion",
+  "description": "Convert programming syntax into real-time visual animations and render deterministic HD/4K videos",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
