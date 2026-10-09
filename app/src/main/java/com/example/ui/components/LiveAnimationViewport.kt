@@ -47,6 +47,7 @@ import com.example.model.RenderConfig
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
 import org.json.JSONObject
 
@@ -81,7 +82,15 @@ fun LiveAnimationViewport(
             }
             setBackgroundColor(android.graphics.Color.BLACK)
             webChromeClient = WebChromeClient()
-            webViewClient = object : WebViewClient() {}
+            webViewClient = object : WebViewClient() {
+                override fun onRenderProcessGone(
+                    view: WebView?,
+                    detail: android.webkit.RenderProcessGoneDetail?
+                ): Boolean {
+                    // Prevent crash if cloud emulator Mesa / OpenGL render node crashes or restarts
+                    return true
+                }
+            }
             addJavascriptInterface(bridge, "AndroidBridge")
         }
     }
@@ -132,7 +141,7 @@ fun LiveAnimationViewport(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, DarkBorder)
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, PurpleBorder)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Header bar

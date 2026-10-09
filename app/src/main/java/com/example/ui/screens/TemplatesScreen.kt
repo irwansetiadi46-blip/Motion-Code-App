@@ -47,6 +47,7 @@ import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
 import com.example.viewmodel.CodeMotionViewModel
 import com.example.viewmodel.NavigationTab
@@ -140,7 +141,7 @@ private fun PresetCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        border = BorderStroke(1.dp, DarkBorder)
+        border = BorderStroke(1.5.dp, PurpleBorder)
     ) {
         Column(
             modifier = Modifier

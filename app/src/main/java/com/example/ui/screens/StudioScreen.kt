@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.ExpandLess
@@ -69,6 +70,7 @@ import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.MatrixGreen
+import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
 import com.example.viewmodel.CodeMotionViewModel
 import com.example.viewmodel.DownloadState
@@ -158,7 +160,7 @@ fun StudioScreen(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            border = BorderStroke(1.dp, DarkBorder)
+            border = BorderStroke(1.5.dp, PurpleBorder)
         ) {
             Column(
                 modifier = Modifier
@@ -231,7 +233,7 @@ fun StudioScreen(
                     ) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Pilih Resolusi & Rasio Aspek (Hingga Full HD 1080p):",
+                            text = "Pilih Resolusi & Rasio Aspek (Hingga 4K Ultra HD):",
                             style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
                         )
                         ResolutionSelector(
@@ -452,7 +454,7 @@ fun StudioScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Kode Animasi (HTML5 Canvas / JS)",
+                    text = "Terminal Code Editor",
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -473,6 +475,193 @@ fun StudioScreen(
                 onApplyCode = { viewModel.applyCodeToPreview() },
                 onOpenFullscreen = onOpenFullscreen
             )
+        }
+
+        // Petunjuk Pengoperasian
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = BorderStroke(1.5.dp, PurpleBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                var isCopied by remember { mutableStateOf(false) }
+
+                val promptText = """Buatkan kode animasi kreatif interaktif/looping menggunakan HTML5 Canvas dan JavaScript murni (atau CSS).
+Aturan:
+- Gunakan elemen canvas dengan id="c" (misal: const c = document.getElementById('c'); const ctx = c.getContext('2d');) atau buat canvas via document.createElement('canvas').
+- Sesuaikan ukuran canvas dengan window.innerWidth dan window.innerHeight (atau gunakan requestAnimationFrame loop).
+- Buat animasi yang dinamis, smooth, dan menarik secara visual (seperti partikel, gelombang cahaya, neon glow, cyber grid, atau efek sci-fi).
+- Berikan output kode lengkap dan langsung bisa dijalankan.""".trimIndent()
+
+                // Header Petunjuk Pengoperasian
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = SkyGlow,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "Petunjuk Pengoperasian",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+                }
+
+                // Instruksi 1
+                Text(
+                    text = "Salin Prompt di bawah ini dan berikan pada Chat Bot Ai (ChatGPT, Gemini, Deepseek, Claude, dll) untuk membuatkan Code Animasi Html dan Javascript.",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = Color(0xFFCBD5E1),
+                        lineHeight = 18.sp
+                    )
+                )
+
+                // Kolom persegi prompt dengan icon Copy dan tombol Download txt
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF0F172A),
+                    border = BorderStroke(1.dp, if (isCopied) MatrixGreen else PurpleBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "PROMPT REKOMENDASI UNTUK AI",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ElectricCyan
+                                )
+                            )
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Tombol Copy Icon
+                                IconButton(
+                                    onClick = {
+                                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(promptText))
+                                        isCopied = true
+                                        android.widget.Toast.makeText(context, "Prompt berhasil disalin ke clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = "Salin Prompt",
+                                        tint = if (isCopied) MatrixGreen else SkyGlow,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                // Tombol Download TXT
+                                Surface(
+                                    onClick = {
+                                        try {
+                                            val fileName = "prompt_animasi_codemotion.txt"
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                                val values = android.content.ContentValues().apply {
+                                                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                                                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                                                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Code Motion")
+                                                }
+                                                val uri = context.contentResolver.insert(
+                                                    android.provider.MediaStore.Downloads.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                                                    values
+                                                )
+                                                if (uri != null) {
+                                                    context.contentResolver.openOutputStream(uri)?.use { os ->
+                                                        os.write(promptText.toByteArray(Charsets.UTF_8))
+                                                        os.flush()
+                                                    }
+                                                    android.widget.Toast.makeText(context, "Berhasil mengunduh $fileName ke Folder Download!", android.widget.Toast.LENGTH_LONG).show()
+                                                } else {
+                                                    throw Exception("Gagal membuat file txt")
+                                                }
+                                            } else {
+                                                val downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                                                val file = java.io.File(downloadDir, fileName)
+                                                file.writeText(promptText, Charsets.UTF_8)
+                                                android.widget.Toast.makeText(context, "Berhasil disimpan ke ${file.absolutePath}", android.widget.Toast.LENGTH_LONG).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "Gagal mengunduh txt: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFF1E293B),
+                                    border = BorderStroke(1.dp, Color(0xFF475569))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = "Download TXT",
+                                            tint = SkyGlow,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "Download .txt",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.White
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Isi teks Prompt dalam kotak persegi
+                        Text(
+                            text = promptText,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFF94A3B8),
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
+                        )
+                    }
+                }
+
+                // Instruksi 2
+                Text(
+                    text = "Kemudian salin Code yang diberikan oleh ai dan paste ke dalam Terminal Code di atas. Dan klik render to MP4.",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFE2E8F0),
+                        lineHeight = 18.sp
+                    )
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(60.dp))

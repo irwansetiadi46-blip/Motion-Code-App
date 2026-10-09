@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,8 +31,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -47,8 +55,10 @@ import com.example.ui.theme.SkyGlow
 
 /**
  * Clean, distraction-free Termux-style terminal editor for Android.
- * Pure terminal experience: code editing only, cursor-aware snippet insertion,
- * without noisy buttons or captions.
+ * Pure terminal experience: code editing only, cursor-aware snippet insertion.
+ * Keyboard behaves deterministically: tapping text toggles/shows keyboard,
+ * scrolling never triggers or dismisses the soft keyboard.
+ * Line gutter is synchronized with text and allows scrolling 10 lines past EOF.
  */
 @Composable
 fun FullScreenCodeEditorModal(
@@ -73,6 +83,17 @@ fun FullScreenCodeEditorModal(
     val lineCount = remember(textFieldValue.text) {
         if (textFieldValue.text.isEmpty()) 1 else textFieldValue.text.lines().size
     }
+
+    val editorVerticalScrollState = rememberScrollState()
+    val editorHorizontalScrollState = rememberScrollState()
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    var isKeyboardActive by remember { mutableStateOf(false) }
+
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val density = LocalDensity.current
 
     // Termux extra keys bar (matching Termux mobile keyboard toolbar)
     val termuxKeys = listOf(
@@ -223,31 +244,46 @@ fun FullScreenCodeEditorModal(
                 }
             }
 
-            // Pure Terminal Editor Area with Gutter & Syntax Highlighting
+            // Pure Terminal Editor Area with Synchronized Gutter & Syntax Highlighting
+            // Scroll behavior: Scrolling does NOT toggle/show/hide soft keyboard.
+            // Tap behavior: Only a tap explicitly toggles or shows/hides soft keyboard.
+            // Extra scroll space: Allows scrolling 10 lines beyond the end of code.
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .background(Color(0xFF000000))
             ) {
-                // Termux Line Numbers Gutter
+                // Termux Line Numbers Gutter (Synced with editorVerticalScrollState)
                 Column(
                     modifier = Modifier
-                        .width(42.dp)
+                        .width(44.dp)
                         .fillMaxHeight()
                         .background(Color(0xFF05080E))
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(editorVerticalScrollState)
                         .padding(vertical = 10.dp, horizontal = 4.dp),
                     horizontalAlignment = Alignment.End
                 ) {
-                    for (i in 1..maxOf(lineCount, 1)) {
+                    val maxLineNumber = maxOf(lineCount, 1)
+                    for (i in 1..maxLineNumber) {
                         Text(
                             text = "$i",
                             style = TextStyle(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 12.sp,
-                                lineHeight = 19.sp,
+                                lineHeight = 20.sp,
                                 color = Color(0xFF334155)
+                            )
+                        )
+                    }
+                    // 10 baris padding kosong di bawah agar gutter selaras saat user scroll melebihi baris terakhir
+                    for (i in 1..10) {
+                        Text(
+                            text = "",
+                            style = TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                lineHeight = 20.sp
                             )
                         )
                     }
@@ -258,28 +294,79 @@ fun FullScreenCodeEditorModal(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
+                        .verticalScroll(editorVerticalScrollState)
+                        .horizontalScroll(editorHorizontalScrollState)
                         .padding(horizontal = 10.dp, vertical = 10.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { tapOffset ->
+                                    // Tap hanya pada teks yang memicu keyboard muncul / tersembunyi
+                                    if (isKeyboardActive) {
+                                        // Jika keyboard sedang muncul dan di-tap lagi, toggle hide
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus()
+                                        isKeyboardActive = false
+                                    } else {
+                                        // Jika keyboard belum muncul, tap memunculkan keyboard dan memindahkan cursor
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                        isKeyboardActive = true
+
+                                        textLayoutResult?.let { layout ->
+                                            val offset = layout.getOffsetForPosition(tapOffset)
+                                            textFieldValue = textFieldValue.copy(
+                                                selection = TextRange(offset.coerceIn(0, textFieldValue.text.length))
+                                            )
+                                        }
+                                    }
+                                }
+                            )
+                        }
                 ) {
-                    BasicTextField(
-                        value = textFieldValue,
-                        onValueChange = {
-                            textFieldValue = it
-                            onCodeChange(it.text)
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                        textStyle = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.5.sp,
-                            lineHeight = 19.sp,
-                            color = Color(0xFFE2E8F0)
-                        ),
-                        cursorBrush = SolidColor(ElectricCyan),
-                        visualTransformation = JsSyntaxHighlighter,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.None,
-                            autoCorrect = false
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        BasicTextField(
+                            value = textFieldValue,
+                            onValueChange = {
+                                textFieldValue = it
+                                onCodeChange(it.text)
+                            },
+                            onTextLayout = { layoutResult ->
+                                textLayoutResult = layoutResult
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                            textStyle = TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.5.sp,
+                                lineHeight = 20.sp,
+                                color = Color(0xFFE2E8F0)
+                            ),
+                            cursorBrush = SolidColor(ElectricCyan),
+                            visualTransformation = JsSyntaxHighlighter,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.None,
+                                autoCorrect = false
+                            )
                         )
-                    )
+
+                        // 10 baris kosong ekstra di bawah teks code (20.sp * 10 = 200.dp sepadan)
+                        Column {
+                            repeat(10) {
+                                Text(
+                                    text = " ",
+                                    style = TextStyle(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.5.sp,
+                                        lineHeight = 20.sp,
+                                        color = Color.Transparent
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

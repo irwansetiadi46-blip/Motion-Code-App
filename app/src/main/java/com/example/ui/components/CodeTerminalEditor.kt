@@ -24,9 +24,6 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -58,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
 import com.example.ui.theme.TerminalBg
 import com.example.ui.theme.TerminalBorder
@@ -68,7 +66,7 @@ import com.example.ui.theme.TerminalGutterText
 fun CodeTerminalEditor(
     code: String,
     onCodeChange: (String) -> Unit,
-    onApplyCode: () -> Unit,
+    onApplyCode: () -> Unit = {},
     onOpenFullscreen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -114,7 +112,7 @@ fun CodeTerminalEditor(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = TerminalBg),
-        border = androidx.compose.foundation.BorderStroke(1.dp, TerminalBorder)
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, PurpleBorder)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Terminal Header with macOS dots and actions
@@ -144,11 +142,24 @@ fun CodeTerminalEditor(
                     )
                 }
 
-                // Header Action Buttons (Copy, Paste, Clear)
+                // Header Action Buttons (Edit Fullscreen, Copy, Paste, Clear)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    // Tombol Edit (Fullscreen Terminal Mode) di samping kiri icon copy
+                    IconButton(
+                        onClick = onOpenFullscreen,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Buka Mode Terminal Editor Full Screen",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+
                     IconButton(
                         onClick = {
                             clipboardManager.setText(AnnotatedString(code))
@@ -305,48 +316,6 @@ fun CodeTerminalEditor(
                 }
             }
 
-            // Bottom Actions Bar
-            // KIRI BAWAH: Tombol icon edit untuk masuk mode fullscreen terminal (sama style dengan copy & paste)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF0F172A))
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Tombol icon edit di kiri bawah container, style sama persis dengan copy/paste icon
-                IconButton(
-                    onClick = onOpenFullscreen,
-                    modifier = Modifier.size(28.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Buka Mode Terminal Editor Full Screen",
-                        tint = Color(0xFF94A3B8),
-                        modifier = Modifier.size(15.dp)
-                    )
-                }
-
-                // Kanan: Tombol Update Preview
-                Button(
-                    onClick = onApplyCode,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                    shape = RoundedCornerShape(6.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Update Preview",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
-            }
         }
     }
 }

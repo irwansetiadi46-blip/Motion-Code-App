@@ -108,7 +108,7 @@ fun CodeMotionApp(
                             }
                         }
                         Spacer(modifier = Modifier.width(10.dp))
-                        Row(verticalAlignment = Alignment.Bottom) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = "CodeMotion",
                                 style = MaterialTheme.typography.titleMedium.copy(
@@ -117,17 +117,26 @@ fun CodeMotionApp(
                                     letterSpacing = 0.5.sp
                                 )
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "VIDEO ENGINE",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = SkyGlow,
-                                    letterSpacing = 1.sp,
-                                    fontSize = 10.sp
-                                ),
-                                modifier = Modifier.padding(bottom = 2.dp)
-                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        color = Color.White,
+                                        shape = RoundedCornerShape(4.dp)
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "War Machine",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFFFF5722),
+                                        letterSpacing = 0.5.sp,
+                                        fontSize = 10.sp
+                                    )
+                                )
+                            }
                         }
                     }
                 },

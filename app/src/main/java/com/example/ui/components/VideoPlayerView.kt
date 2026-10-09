@@ -53,6 +53,7 @@ import com.example.model.SavedVideo
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricBlue
+import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
 import kotlinx.coroutines.delay
 import java.text.DecimalFormat
@@ -91,7 +92,7 @@ fun VideoPlayerView(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        border = BorderStroke(1.dp, Color(0xFF0284C7))
+        border = BorderStroke(1.5.dp, PurpleBorder)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Player Stage
@@ -114,6 +115,10 @@ fun VideoPlayerView(
                             }
                             setOnCompletionListener {
                                 isPlaying = false
+                            }
+                            setOnErrorListener { _, _, _ ->
+                                isPlaying = false
+                                true
                             }
                             videoViewRef = this
                         }

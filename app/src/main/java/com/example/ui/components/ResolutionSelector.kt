@@ -30,6 +30,7 @@ import com.example.model.VideoResolution
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricBlue
+import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
 
 @Composable
@@ -50,7 +51,7 @@ fun ResolutionSelector(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        border = BorderStroke(1.dp, DarkBorder)
+        border = BorderStroke(1.5.dp, PurpleBorder)
     ) {
         Column(
             modifier = Modifier
@@ -74,7 +75,19 @@ fun ResolutionSelector(
                     val isActive = selectedResolution.category == category
                     Surface(
                         onClick = {
-                            val defaultForCategory = VideoResolution.ALL.firstOrNull { it.category == category }
+                            val is4k = selectedResolution.label.contains("4K")
+                            val is2k = selectedResolution.label.contains("2K")
+                            val isHd = selectedResolution.label.startsWith("HD") || selectedResolution.label.contains(" 720")
+                            val defaultForCategory = VideoResolution.ALL.filter { it.category == category }.firstOrNull { target ->
+                                when {
+                                    is4k -> target.label.contains("4K")
+                                    is2k -> target.label.contains("2K")
+                                    isHd -> target.label.startsWith("HD") || target.label.contains(" 720")
+                                    else -> target.label.contains("Full HD")
+                                }
+                            } ?: VideoResolution.ALL.firstOrNull { it.category == category && it.isDefault }
+                              ?: VideoResolution.ALL.firstOrNull { it.category == category }
+
                             if (defaultForCategory != null) {
                                 onResolutionSelected(defaultForCategory)
                             }
