@@ -238,6 +238,16 @@ function sanitizeJsForScriptTag(src) {
   return String(src == null ? '' : src).replace(/<\/(script)/gi, '<\\/$1');
 }
 
+// Deteksi apakah kode user mendefinisikan atau mencoba mengambil elemen canvas
+function userHasCanvas(code) {
+  if (!code) return false;
+  return /<canvas\b/i.test(code) ||
+    /createElement\s*\(\s*['"]canvas['"]\s*\)/i.test(code) ||
+    /createElementNS\s*\([^)]*['"]canvas['"]/i.test(code) ||
+    /getElementById\s*\(\s*['"](c|canvas|myCanvas|stage)['"]\s*\)/i.test(code) ||
+    /querySelector\s*\(\s*['"]#?(c|canvas|myCanvas|stage)['"]\s*\)/i.test(code);
+}
+
 function compileCodeToHtml(code, controlled) {
   code = (code || '').trim();
   
@@ -245,6 +255,7 @@ function compileCodeToHtml(code, controlled) {
   const isFullHtml = /<!DOCTYPE\s+html/i.test(code) || /<html[\s>]/i.test(code);
   const isFragment = !isFullHtml && /<(canvas|script|style|div|section|main|svg|body|head)\b/i.test(code);
   const mode = isFullHtml ? 'full-html' : (isFragment ? 'fragment' : 'js-only');
+  const hasCanvas = userHasCanvas(code);
 
   const cssReset = '<style>' +
     'html,body{margin:0!important;padding:0!important;width:100%!important;height:100%!important;overflow:hidden!important;background:#000!important;}' +
@@ -285,7 +296,18 @@ function compileCodeToHtml(code, controlled) {
   const canvasAliasScript = '<script>' +
     '(function() {' +
     '  var findCanvas = function() {' +
-    '    return document.querySelector("canvas") || document.getElementById("canvas") || document.getElementById("c");' +
+    '    var all = document.querySelectorAll("canvas");' +
+    '    if (!all || all.length === 0) return document.getElementById("c");' +
+    '    var largest = all[0];' +
+    '    var maxArea = (largest.width || 0) * (largest.height || 0);' +
+    '    for (var i = 1; i < all.length; i++) {' +
+    '      var area = (all[i].width || 0) * (all[i].height || 0);' +
+    '      if (area > maxArea) {' +
+    '        maxArea = area;' +
+    '        largest = all[i];' +
+    '      }' +
+    '    }' +
+    '    return largest;' +
     '  };' +
     '  var origGet = document.getElementById.bind(document);' +
     '  document.getElementById = function(id) {' +
@@ -338,8 +360,8 @@ function compileCodeToHtml(code, controlled) {
       html = html + errorDivHtml;
     }
 
-    // Auto-create canvas if not present
-    if (!/<canvas\b/i.test(html)) {
+    // Auto-create canvas HANYA jika user belum memiliki canvas
+    if (!hasCanvas) {
       const defaultCanvas = '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>';
       if (/<\/body>/i.test(html)) {
         html = html.replace(/<\/body>/i, defaultCanvas + '</body>');
@@ -353,7 +375,8 @@ function compileCodeToHtml(code, controlled) {
 
   if (mode === 'fragment') {
     let bodyContent = code;
-    if (!/<canvas\b/i.test(bodyContent)) {
+    // Auto-create canvas HANYA jika user belum memiliki canvas
+    if (!hasCanvas) {
       bodyContent = '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>\n' + bodyContent;
     }
 
@@ -371,13 +394,15 @@ function compileCodeToHtml(code, controlled) {
 
   // js-only mode: sanitasi script tag karena kita yang membungkus kode user ke tag <script>
   const safeJsCode = sanitizeJsForScriptTag(code);
+  const autoCanvasTag = hasCanvas ? '' : '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>';
+
   return '<!DOCTYPE html>' +
     '<html><head><meta charset="utf-8">' +
     harnessScript +
     errHandlerScript +
     cssReset +
     '</head><body>' +
-    '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>' +
+    autoCanvasTag +
     errorDivHtml +
     canvasAliasScript +
     '<script>\n' +
@@ -461,11 +486,28 @@ window.startVideoRender = async function() {
     const idoc = iframe.contentDocument;
 
     if (!iwin.__HARNESS__) throw new Error("Harness deterministik gagal terpasang.");
-    const canvas = idoc.querySelector('canvas') || idoc.getElementById('canvas') || idoc.getElementById('c');
-    if (!canvas) throw new Error("Elemen <canvas> tidak ditemukan di dalam kode.");
+    const allCanvases = Array.from(idoc.querySelectorAll('canvas'));
+    if (!allCanvases || allCanvases.length === 0) throw new Error("Elemen <canvas> tidak ditemukan di dalam kode.");
 
-    canvas.width = TARGET_W;
-    canvas.height = TARGET_H;
+    // Pilih canvas dengan area (width * height) terbesar
+    let canvas = allCanvases[0];
+    let maxArea = (canvas.width || 0) * (canvas.height || 0);
+    for (let cIdx = 1; cIdx < allCanvases.length; cIdx++) {
+      const cItem = allCanvases[cIdx];
+      const area = (cItem.width || 0) * (cItem.height || 0);
+      if (area > maxArea) {
+        maxArea = area;
+        canvas = cItem;
+      }
+    }
+
+    // Resize canvas ke TARGET_W × TARGET_H HANYA jika ukurannya berbeda
+    if (canvas.width !== TARGET_W) {
+      canvas.width = TARGET_W;
+    }
+    if (canvas.height !== TARGET_H) {
+      canvas.height = TARGET_H;
+    }
 
     const totalFrames = Math.round(DURATION * FPS);
     const frameDurationUs = Math.round(1_000_000 / FPS);
