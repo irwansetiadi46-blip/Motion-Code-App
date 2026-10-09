@@ -231,7 +231,7 @@ fun StudioScreen(
                     ) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Pilih Resolusi & Rasio Aspek (Tersedia hingga 4K UHD):",
+                            text = "Pilih Resolusi & Rasio Aspek (Hingga Full HD 1080p):",
                             style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
                         )
                         ResolutionSelector(
