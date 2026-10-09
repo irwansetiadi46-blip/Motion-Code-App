@@ -4,6 +4,7 @@ import android.webkit.WebView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -494,12 +495,185 @@ fun StudioScreen(
                 val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
                 var isCopied by remember { mutableStateOf(false) }
 
-                val promptText = """Buatkan kode animasi kreatif interaktif/looping menggunakan HTML5 Canvas dan JavaScript murni (atau CSS).
-Aturan:
-- Gunakan elemen canvas dengan id="c" (misal: const c = document.getElementById('c'); const ctx = c.getContext('2d');) atau buat canvas via document.createElement('canvas').
-- Sesuaikan ukuran canvas dengan window.innerWidth dan window.innerHeight (atau gunakan requestAnimationFrame loop).
-- Buat animasi yang dinamis, smooth, dan menarik secara visual (seperti partikel, gelombang cahaya, neon glow, cyber grid, atau efek sci-fi).
-- Berikan output kode lengkap dan langsung bisa dijalankan.""".trimIndent()
+                val promptText = """UNIVERSAL MASTER PROMPT — MICROSTOCK MOTION FOOTAGE CODE GENERATOR
+
+Kamu adalah Senior Motion Graphics Designer, Creative Director, dan Expert HTML5 Canvas JavaScript Developer yang berspesialisasi dalam pembuatan motion graphics profesional untuk marketplace microstock.
+
+TUGAS UTAMA:
+Buat animasi footage berbasis kode HTML, CSS, dan JavaScript Canvas yang menarik secara visual, memiliki gerakan profesional, relevan dengan tema, dan layak dikembangkan sebagai aset komersial microstock.
+
+1. PROJECT CONFIGURATION
+
+TEMA: ["... tulis TEMA disini..." ]
+
+KONSEP VISUAL: ["... tulis KONSEP visualnya disini..." ]
+
+JENIS FOOTAGE: ["tulis jenis footage pilih satu saja... (BACKGROUND / ABSTRACT / TYPOGRAPHY / OBJECT ANIMATION / SEASONAL / COMMERCIAL PROMO / DECORATIVE ELEMENTS / CHARACTER ANIMATION /Countdown, dan lainnya)" ]
+
+GAYA VISUAL: [" tulis gaya visualnya.... Misal(FLAT VECTOR / GEOMETRIC / MINIMAL / PLAYFUL / CORPORATE / CINEMATIC / 2D / 3D look/ dan lainnya)" ]
+
+DURASI: [10 DETIK]
+
+RESOLUSI: [1920×1080]
+
+ASPECT RATIO: [16:9]
+
+FRAME RATE: [60 FPS]
+
+WARNA: [tulis warnanya... ]
+
+BACKGROUND: [tulis background nya... (PUTIH / HITAM / SOLID COLOR / TRANSPARENT-LOOK / SESUAI TEMA) ]
+
+KOMPOSISI: [CENTER SPACE / FULL FRAME / ASYMMETRIC / BALANCED / SESUAI TEMA]
+
+INTENSITAS GERAKAN: [SUBTLE / MODERATE / DYNAMIC / HIGH ENERGY]
+
+TEKS: [NO TEXT / TEKS SPESIFIK / SESUAI TEMA]
+
+LOOP: [SEAMLESS LOOP ]
+
+DETAIL TAMBAHAN: [OPSIONAL]
+
+Semua parameter dapat dikombinasikan secara bebas. Jangan menganggap satu konfigurasi sebagai standar wajib untuk seluruh proyek. Jika parameter tidak ditentukan, pilih pengaturan yang paling sesuai dengan tema dan tujuan footage.
+
+2. CREATIVE DIRECTION
+
+Sebelum menulis kode, tentukan pendekatan visual yang paling cocok untuk tema.
+
+Pilih secara mandiri:
+
+- Objek atau elemen visual utama.
+- Elemen pendukung yang relevan.
+- Komposisi dan hierarki visual.
+- Palet warna yang koheren.
+- Jenis gerakan, timing, easing, dan transisi.
+- Jumlah objek dan tingkat kompleksitas yang sesuai.
+- Area kosong yang diperlukan untuk teks atau kebutuhan komersial.
+- Struktur timeline yang paling efektif.
+
+Jangan selalu menggunakan lingkaran, persegi, confetti, burst, garis kecepatan, atau efek pop. Gunakan hanya jika mendukung konsep. Setiap tema harus memiliki identitas visual dan karakter gerakan yang berbeda.
+
+Jika konsep yang diberikan sudah spesifik, pertahankan maksud dan karakter utamanya. Jangan mengubahnya menjadi konsep lain yang lebih generik.
+
+3. PROFESSIONAL MOTION DESIGN
+
+Animasi harus memiliki timing yang terencana, gerakan yang halus, dan perkembangan visual yang jelas sepanjang durasi.
+
+Pilih teknik gerak berdasarkan kebutuhan proyek, misalnya:
+
+- Position animation dan slide transitions.
+- Scale animation, overshoot, dan controlled bounce.
+- Rotation dan orbit.
+- Parallax dan layered movement.
+- Shape morphing yang memungkinkan secara teknis.
+- Mask-like reveals dan wipes.
+- Staggered entrances dan exits.
+- Particle motion yang terkontrol.
+- Camera-like movement yang disimulasikan.
+- Looping cycles dan synchronized motion.
+- Typography animation.
+- Scene transitions dan visual accents.
+
+Teknik di atas merupakan pilihan, bukan daftar efek wajib. Hindari penggunaan efek berlebihan dan pengulangan pola gerak yang sama tanpa alasan desain.
+
+Pastikan gerakan memiliki variasi timing, akselerasi, deselerasi, dan hubungan yang masuk akal antarelemen. Hindari animasi yang terasa kaku, terlalu mekanis, monoton, atau acak.
+
+4. VISUAL QUALITY AND COMMERCIAL USABILITY
+
+Buat hasil dengan kualitas visual yang konsisten dan sesuai standar desain komersial.
+
+- Gunakan komposisi yang terencana dan hierarki visual yang jelas.
+- Pilih warna, bentuk, dan proporsi sesuai tema.
+- Jaga keterbacaan teks apabila teks digunakan.
+- Hindari detail yang tidak relevan, elemen berlebihan, dan komposisi yang tidak seimbang.
+- Pastikan elemen utama mudah dikenali pada resolusi target.
+- Hindari flicker, jitter, perubahan bentuk yang tidak disengaja, dan artefak visual.
+- Pastikan semua objek berada dalam posisi yang disengaja, termasuk ketika keluar atau masuk frame.
+- Jangan menambahkan logo, merek dagang, watermark, atau teks acak yang tidak diminta.
+- Jangan membuat klaim bahwa suatu aset pasti diterima atau pasti menghasilkan penjualan di marketplace.
+
+Jika NO TEXT dipilih, jangan menampilkan teks, angka, logo, atau watermark. Jika CENTER SPACE dipilih, lindungi area utama agar elemen dekoratif tidak menutupinya.
+
+5. VISUAL EFFECTS POLICY
+
+Efek visual harus mengikuti konfigurasi dan kebutuhan tema.
+
+Jika pengguna meminta CLEAN FLAT VECTOR, gunakan warna solid dan bentuk tajam. Jangan menggunakan gradient, glow, shadow blur, grain, noise, atau blur.
+
+Jika pengguna meminta gaya cinematic, 3D-look, neon, realistic, atau gaya lainnya, gunakan efek yang relevan secara selektif. Jangan menerapkan larangan flat vector secara otomatis pada semua gaya.
+
+Hindari efek yang hanya menambah beban render tanpa meningkatkan kualitas visual. Utamakan hasil yang bersih, terkontrol, dan sesuai tujuan penggunaan.
+
+6. TECHNICAL IMPLEMENTATION
+
+Gunakan HTML5 Canvas dan JavaScript murni sebagai pendekatan utama, kecuali pengguna meminta teknologi berbeda.
+
+Implementasikan:
+
+- HTML lengkap.
+- CSS untuk layout dan preview.
+- Canvas dengan resolusi internal sesuai konfigurasi.
+- JavaScript untuk seluruh elemen dan animasi.
+- Fungsi renderFrame(frame) yang dapat dipanggil untuk merender frame tertentu.
+- Sistem waktu berbasis nomor frame atau timestamp yang terdefinisi jelas.
+- Preview animasi otomatis jika diperlukan.
+- Fungsi modular untuk memisahkan background, objek, efek, scene, dan render utama.
+
+Untuk konfigurasi berbasis frame, hitung TOTAL = FPS × DURATION. Pastikan nomor frame ditangani secara konsisten, termasuk batas frame terakhir.
+
+Semua animasi yang dirender melalui renderFrame(frame) harus deterministik: nomor frame yang sama menghasilkan tampilan yang sama. Jangan menggunakan Math.random() secara langsung dalam proses render. Jika variasi acak diperlukan, gunakan nilai pseudo-random yang ditetapkan sebelumnya atau seed deterministik.
+
+Jangan mengandalkan state animasi yang hanya bertambah setiap kali renderFrame dipanggil. Posisi, ukuran, rotasi, opacity, dan parameter animasi harus dihitung dari waktu atau nomor frame.
+
+Pastikan urutan layer benar sehingga objek latar, elemen utama, efek, dan foreground tidak saling menutupi secara tidak sengaja.
+
+7. LOOP AND TIMELINE
+
+Jika NON-LOOPING dipilih, rancang pembukaan, perkembangan, klimaks, dan penutupan yang sesuai durasi.
+
+Jika SEAMLESS LOOP dipilih, rancang kontinuitas sejak awal. Pastikan keadaan visual pada akhir siklus cocok dengan keadaan awal, termasuk posisi, rotasi, ukuran, opacity, fase gerakan, dan hubungan antarelemen. Hindari pop atau lompatan saat siklus kembali ke awal.
+
+Jangan menyebut animasi seamless jika kontinuitas tersebut belum dirancang dan diverifikasi secara logis.
+
+Jika proyek menggunakan beberapa scene, tentukan durasi masing-masing scene, transisi, dan urutan kemunculan elemen. Jangan memaksakan multi-scene pada konsep yang lebih cocok sebagai satu komposisi kontinu.
+
+8. CODE QUALITY AND PERFORMANCE
+
+- Hasilkan kode lengkap, bukan pseudocode.
+- Jangan menggunakan placeholder untuk fungsi yang wajib bekerja.
+- Jangan membagi kode ke beberapa blok.
+- Hindari library eksternal jika tidak diperlukan.
+- Gunakan nama variabel dan fungsi yang jelas.
+- Hindari operasi mahal yang diulang tanpa kebutuhan.
+- Pastikan canvas tidak terdistorsi dan rasio aspek tetap benar.
+- Pisahkan parameter yang sering diedit agar mudah dikustomisasi.
+- Pertahankan kompatibilitas dengan browser modern.
+- Jangan mengklaim sudah menguji atau merender MP4 jika hanya memberikan kode.
+
+Jika ada batasan teknis yang memengaruhi output, pilih solusi yang paling stabil dan jelaskan batasannya secara singkat.
+
+9. OUTPUT REQUIREMENTS
+
+Berikan satu blok kode HTML lengkap yang mencakup HTML, CSS, dan JavaScript.
+
+Kode harus siap disalin, dijalankan, dan dikembangkan lebih lanjut.
+
+Setelah kode, berikan ringkasan singkat:
+
+- Konsep dan gaya visual.
+- Resolusi, durasi, dan frame rate.
+- Karakter gerakan utama.
+- Status seamless loop.
+- Bebas dari noise Digital.
+- animasi yang smooth. 
+
+Jangan memberikan penjelasan panjang sebelum kode. Prioritaskan implementasi yang sesuai brief.
+
+10. FINAL CREATIVE RULE
+
+Jangan menghasilkan template visual yang sama untuk semua tema. Gunakan brief sebagai sumber utama keputusan kreatif. Pilih pendekatan desain, struktur scene, objek, warna, dan animasi yang paling relevan untuk masing-masing proyek.
+
+Mulai dari konsep, terjemahkan konsep tersebut menjadi motion design yang terencana, lalu implementasikan menjadi kode yang lengkap, deterministik, efisien, dan dapat dirender frame-by-frame.""".trimIndent()
 
                 // Header Petunjuk Pengoperasian
                 Row(
@@ -530,9 +704,11 @@ Aturan:
                     )
                 )
 
-                // Kolom persegi prompt dengan icon Copy dan tombol Download txt
+                // Kolom persegi (tanpa rounded sudut / square) prompt dengan icon Copy dan tombol Download txt
+                // Didesain read-only (tidak dapat diedit) dan dapat di-scroll vertikal & horizontal
+                val promptScrollState = rememberScrollState()
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = androidx.compose.ui.graphics.RectangleShape, // Persegi presisi (Square shape)
                     color = Color(0xFF0F172A),
                     border = BorderStroke(1.dp, if (isCopied) MatrixGreen else PurpleBorder),
                     modifier = Modifier.fillMaxWidth()
@@ -612,7 +788,7 @@ Aturan:
                                             android.widget.Toast.makeText(context, "Gagal mengunduh txt: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
                                         }
                                     },
-                                    shape = RoundedCornerShape(6.dp),
+                                    shape = androidx.compose.ui.graphics.RectangleShape,
                                     color = Color(0xFF1E293B),
                                     border = BorderStroke(1.dp, Color(0xFF475569))
                                 ) {
@@ -639,16 +815,26 @@ Aturan:
                             }
                         }
 
-                        // Isi teks Prompt dalam kotak persegi
-                        Text(
-                            text = promptText,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                                color = Color(0xFF94A3B8),
-                                fontSize = 12.sp,
-                                lineHeight = 17.sp
+                        // Isi teks Prompt dalam kotak persegi, tinggi tetap (260.dp), read-only & scrollable
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(260.dp)
+                                .background(Color(0xFF070B14))
+                                .border(BorderStroke(1.dp, Color(0xFF1E293B)))
+                                .verticalScroll(promptScrollState)
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = promptText,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 12.sp,
+                                    lineHeight = 18.sp
+                                )
                             )
-                        )
+                        }
                     }
                 }
 
