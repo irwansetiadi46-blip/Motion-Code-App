@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
@@ -48,6 +50,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.model.QualityBitrate
 import com.example.model.RenderState
 import com.example.ui.components.LiveAnimationViewport
@@ -58,8 +62,10 @@ import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.MatrixGreen
 import com.example.ui.theme.SkyGlow
 import com.example.viewmodel.CodeMotionViewModel
+import com.example.viewmodel.DownloadState
 import java.text.DecimalFormat
 
 @Composable
@@ -71,6 +77,7 @@ fun ExportScreen(
     val renderConfig by viewModel.renderConfig.collectAsState()
     val renderState by viewModel.renderState.collectAsState()
     val selectedVideo by viewModel.selectedVideoForPlayback.collectAsState()
+    val downloadState by viewModel.downloadState.collectAsState()
     val reloadTrigger by viewModel.reloadPreviewTrigger.collectAsState()
 
     val fpsOptions = listOf(24, 30, 60)
@@ -83,10 +90,10 @@ fun ExportScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Section 2: Preview Render (Active Live Stage)
+        // Section: Live Viewport Preview
         Column {
             Text(
-                text = "2. Preview Render & Animasi",
+                text = "Live Viewport Preview",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -94,7 +101,7 @@ fun ExportScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Viewport preview = resolusi output (${renderConfig.resolution.width}×${renderConfig.resolution.height}). Pratinjau frame yang sedang di-render akan tampil di sini secara real-time.",
+                text = "Resolusi aktif: ${renderConfig.resolution.width}×${renderConfig.resolution.height}. Animasi berjalan secara real-time dari kode yang Anda tulis.",
                 style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF94A3B8))
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -107,20 +114,20 @@ fun ExportScreen(
                 onWebViewReady = { wv ->
                     viewModel.boundWebView = wv
                 },
-                title = "PREVIEW RENDER (LIVE)"
+                title = "REAL-TIME ANIMATION VIEWPORT"
             )
         }
 
-        // Section 3: Konfigurasi Export
+        // Section: Konfigurasi Export
         Text(
-            text = "3. Konfigurasi Export",
+            text = "Pengaturan Format & Export Video",
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Bold,
                 color = Color.White
             )
         )
 
-        // Resolution & Aspect Ratio Selector
+        // Resolution & Aspect Ratio Selector (including 4K UHD)
         ResolutionSelector(
             selectedResolution = renderConfig.resolution,
             onResolutionSelected = { viewModel.updateResolution(it) }
@@ -310,10 +317,11 @@ fun ExportScreen(
 
                 val estMb = DecimalFormat("#.##").format(renderConfig.estimatedSizeBytes / (1024f * 1024f))
                 Text(
-                    text = "• Total Frame: ${renderConfig.totalFrames} frame (${renderConfig.durationSeconds}s × ${renderConfig.fps}fps)\n" +
-                            "• Bitrate Efektif: ${(renderConfig.safeBitrateBps / 1_000_000f)} Mbps (Hardware AVC/H.264)\n" +
+                    text = "• Resolusi Target: ${renderConfig.resolution.width}×${renderConfig.resolution.height} (${renderConfig.resolution.label})\n" +
+                            "• Total Frame: ${renderConfig.totalFrames} frame (${renderConfig.durationSeconds}s × ${renderConfig.fps}fps)\n" +
+                            "• Bitrate Efektif: ${(renderConfig.safeBitrateBps / 1_000_000f)} Mbps\n" +
                             "• Estimasi Ukuran File: ~$estMb MB MP4\n" +
-                            "• Model Render: Deterministic Virtual Clock (0 frame drop, pixel-perfect)",
+                            "• Virtual Time Harness: deterministik frame-demi-frame tanpa frame drop",
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = FontFamily.Monospace,
                         color = Color(0xFF94A3B8),
@@ -353,7 +361,7 @@ fun ExportScreen(
             }
         }
 
-        // Progress Section
+        // Live Render Progress Section
         AnimatedVisibility(visible = isRendering) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -440,11 +448,11 @@ fun ExportScreen(
             }
         }
 
-        // Section 4: Output Video
+        // Section: Video MP4 Preview (Displayed after render finishes)
         if (selectedVideo != null) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "4. Output Video",
+                    text = "Video Mp4 Preview",
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -462,5 +470,176 @@ fun ExportScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
+    }
+
+    // Modal Dialog: Indikator Progres Download & Spinner dengan Persentase
+    when (val dState = downloadState) {
+        is DownloadState.Downloading -> {
+            Dialog(
+                onDismissRequest = { /* Prevent dismiss while downloading */ },
+                properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(0.92f),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    border = BorderStroke(1.dp, SkyGlow)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(22.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            color = SkyGlow,
+                            strokeWidth = 3.5.dp,
+                            modifier = Modifier.size(48.dp)
+                        )
+
+                        Text(
+                            text = "Mengunduh Video MP4...",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+
+                        Text(
+                            text = "${dState.percent}%",
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ElectricCyan
+                            )
+                        )
+
+                        LinearProgressIndicator(
+                            progress = { dState.progress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = SkyGlow,
+                            trackColor = Color(0xFF1E293B)
+                        )
+
+                        Text(
+                            text = "Menyimpan ke memori perangkat:\nFolder Download/Code Motion Video",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = Color(0xFF94A3B8),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        is DownloadState.Success -> {
+            Dialog(onDismissRequest = { viewModel.dismissDownloadState() }) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(0.92f),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    border = BorderStroke(1.dp, MatrixGreen)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(22.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = MatrixGreen,
+                            modifier = Modifier.size(52.dp)
+                        )
+
+                        Text(
+                            text = "Download Selesai 100%!",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+
+                        Text(
+                            text = "File video MP4 berhasil disimpan ke memori lokal di:\n\n${dState.folderName}/${dState.filename}",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFFE2E8F0),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                lineHeight = 18.sp
+                            )
+                        )
+
+                        Button(
+                            onClick = { viewModel.dismissDownloadState() },
+                            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Selesai", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        is DownloadState.Error -> {
+            Dialog(onDismissRequest = { viewModel.dismissDownloadState() }) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(0.92f),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    border = BorderStroke(1.dp, Color(0xFFF43F5E))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = null,
+                            tint = Color(0xFFF43F5E),
+                            modifier = Modifier.size(48.dp)
+                        )
+
+                        Text(
+                            text = "Download Gagal",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        )
+
+                        Text(
+                            text = dState.message,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = Color(0xFFFECDD3),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        )
+
+                        Button(
+                            onClick = { viewModel.dismissDownloadState() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Tutup")
+                        }
+                    }
+                }
+            }
+        }
+
+        else -> {}
     }
 }

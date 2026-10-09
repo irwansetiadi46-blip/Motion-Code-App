@@ -25,7 +25,6 @@ object EngineHtmlBuilder {
         renderConfig: RenderConfig
     ): String {
         val muxerScript = getMuxerScript(context)
-        val normalizedCode = normalizeUserCode(userCode)
         val targetW = renderConfig.resolution.width
         val targetH = renderConfig.resolution.height
         val fps = renderConfig.fps
@@ -80,7 +79,7 @@ object EngineHtmlBuilder {
       position: absolute;
       top: 8px;
       left: 8px;
-      background: rgba(2, 132, 199, 0.85);
+      background: rgba(2, 132, 199, 0.9);
       backdrop-filter: blur(4px);
       color: #fff;
       padding: 4px 10px;
@@ -183,7 +182,7 @@ const FPS = $fps;
 const DURATION = $duration;
 const BITRATE = $bitrate;
 
-let userCodeRaw = ${escapeJsString(normalizedCode)};
+let userCodeRaw = ${escapeJsString(userCode)};
 
 function postProgress(current, total, progress, status) {
   if (window.AndroidBridge && window.AndroidBridge.onProgress) {
@@ -211,28 +210,82 @@ function fitViewport() {
 
 window.addEventListener('resize', fitViewport);
 
-function getCompiledHtml(code, controlled) {
-  return '<!DOCTYPE html>' +
-    '<html><head><meta charset="utf-8">' +
-    '<style>' +
-    'html,body{margin:0!important;padding:0!important;overflow:hidden!important;width:100%!important;height:100%!important;background:#000!important}' +
-    'canvas{display:block!important;width:100%!important;height:100%!important;}' +
-    '</style>' +
-    '<script>' + HARNESS_SOURCE + '<\/script>' +
-    '</head><body>' +
-    '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>' +
-    '<script>' +
-    'if(window.__HARNESS__) window.__HARNESS__.setControlled(' + (controlled ? 'true' : 'false') + ');\n' +
-    code +
-    '<\/script>' +
-    '</body></html>';
+function compileCodeToHtml(code, controlled) {
+  code = (code || '').trim();
+  const isHtml = /<(html|head|body|canvas|script|style|div|svg)\b/i.test(code);
+
+  if (isHtml) {
+    // User provided full or partial HTML document
+    const parser = new DOMParser();
+    let doc;
+    try {
+      doc = parser.parseFromString(code, 'text/html');
+    } catch(e) {
+      doc = parser.parseFromString('<!DOCTYPE html><html><head></head><body></body></html>', 'text/html');
+    }
+    
+    let head = doc.head;
+    if (!head) {
+      head = doc.createElement('head');
+      doc.documentElement.insertBefore(head, doc.documentElement.firstChild);
+    }
+    
+    // Inject deterministic harness
+    const s = doc.createElement('script');
+    s.textContent = HARNESS_SOURCE + '\nif(window.__HARNESS__) window.__HARNESS__.setControlled(' + (controlled ? 'true' : 'false') + ');';
+    head.insertBefore(s, head.firstChild);
+
+    // Inject base style
+    const st = doc.createElement('style');
+    st.textContent = 'html,body{margin:0!important;padding:0!important;overflow:hidden!important;width:100%!important;height:100%!important;background:#000!important}canvas{display:block!important;width:100%!important;height:100%!important;}';
+    head.appendChild(st);
+
+    // Ensure a canvas exists if user forgot to declare <canvas>
+    if (!doc.querySelector('canvas')) {
+      const c = doc.createElement('canvas');
+      c.id = 'c';
+      c.width = TARGET_W;
+      c.height = TARGET_H;
+      (doc.body || doc.documentElement).appendChild(c);
+    }
+
+    return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+  } else {
+    // User provided pure JavaScript code (direct canvas animation logic)
+    return '<!DOCTYPE html>' +
+      '<html><head><meta charset="utf-8">' +
+      '<style>' +
+      'html,body{margin:0!important;padding:0!important;overflow:hidden!important;width:100%!important;height:100%!important;background:#000!important}' +
+      'canvas{display:block!important;width:100%!important;height:100%!important;}' +
+      '#errBox{display:none;position:fixed;bottom:0;left:0;right:0;background:rgba(220,38,38,0.9);color:#fff;padding:8px 12px;font-family:monospace;font-size:12px;z-index:9999;border-top:1px solid #fca5a5;}' +
+      '</style>' +
+      '<script>' + HARNESS_SOURCE + '<\/script>' +
+      '</head><body>' +
+      '<canvas id="c" width="' + TARGET_W + '" height="' + TARGET_H + '"></canvas>' +
+      '<div id="errBox"></div>' +
+      '<script>' +
+      'window.onerror = function(msg, url, line, col, err) {' +
+      '  var b = document.getElementById("errBox");' +
+      '  if (b) { b.style.display = "block"; b.textContent = "⚠️ Error (Baris " + line + "): " + msg; }' +
+      '};' +
+      'if(window.__HARNESS__) window.__HARNESS__.setControlled(' + (controlled ? 'true' : 'false') + ');\n' +
+      'var c = document.getElementById("c");\n' +
+      'var canvas = c;\n' +
+      'var W = ' + TARGET_W + ';\n' +
+      'var H = ' + TARGET_H + ';\n' +
+      'try {\n' +
+      code + '\n' +
+      '} catch(e) { window.onerror(e.message || String(e), "", 0, 0, e); }\n' +
+      '<\/script>' +
+      '</body></html>';
+  }
 }
 
 function loadLivePreview(code, controlled) {
   const iframe = document.getElementById('liveFrame');
   const doc = iframe.contentDocument || iframe.contentWindow.document;
   doc.open();
-  doc.write(getCompiledHtml(code, controlled || false));
+  doc.write(compileCodeToHtml(code, controlled || false));
   doc.close();
 
   iframe.onload = function() {
@@ -257,7 +310,7 @@ window.startVideoRender = async function() {
     if (banner) banner.style.display = 'block';
     postProgress(0, DURATION * FPS, 0.0, "Menyiapkan stage render " + TARGET_W + "×" + TARGET_H + "...");
 
-    // Render directly in the live visible stage so Chromium GPU compositor keeps it active and user sees preview!
+    // Render directly on the visible live stage so Chromium GPU compositor keeps it active and user sees preview!
     loadLivePreview(userCodeRaw, true);
     await new Promise(r => setTimeout(r, 400));
 
@@ -350,7 +403,6 @@ window.startVideoRender = async function() {
     for (let i = 0; i < totalFrames; i++) {
       if (encoderError) throw encoderError;
 
-      // Deterministic virtual time step
       harness.step(dt);
 
       const frame = new VideoFrame(canvas, {
@@ -361,7 +413,6 @@ window.startVideoRender = async function() {
       encoder.encode(frame, { keyFrame: (i % keyFrameInterval === 0) });
       frame.close();
 
-      // Update progress and allow UI to breathe
       if (i % 4 === 0 || i === totalFrames - 1) {
         const prog = (i + 1) / totalFrames;
         const pct = Math.round(prog * 100);
@@ -369,7 +420,6 @@ window.startVideoRender = async function() {
         await new Promise(r => setTimeout(r, 0));
       }
 
-      // Safety-bounded queue draining: never freeze even on heavy frames
       let waitIter = 0;
       while (encoder.encodeQueueSize > 4 && waitIter < 35) {
         await new Promise(r => setTimeout(r, 8));
@@ -390,13 +440,12 @@ window.startVideoRender = async function() {
 
     const uint8 = new Uint8Array(buffer);
     const totalBytes = uint8.byteLength;
-    const filename = "footage_" + TARGET_W + "x" + TARGET_H + "_" + FPS + "fps";
+    const filename = "codemotion_" + TARGET_W + "x" + TARGET_H + "_" + Date.now();
 
     if (window.AndroidBridge && window.AndroidBridge.onStartStream) {
       window.AndroidBridge.onStartStream(filename, TARGET_W, TARGET_H, DURATION, totalBytes);
     }
 
-    // Stream to Android in safe, fast 64KB blocks with 8KB sub-chunk conversion
     const CHUNK_SIZE = 64 * 1024;
     for (let offset = 0; offset < totalBytes; offset += CHUNK_SIZE) {
       const slice = uint8.subarray(offset, Math.min(offset + CHUNK_SIZE, totalBytes));
@@ -421,7 +470,6 @@ window.startVideoRender = async function() {
 
   } catch (err) {
     postError("Gagal merender video: " + (err.message || err));
-    // Restore live preview on error
     loadLivePreview(userCodeRaw, false);
   } finally {
     if (banner) banner.style.display = 'none';
@@ -431,17 +479,6 @@ window.startVideoRender = async function() {
 </body>
 </html>
         """.trimIndent()
-    }
-
-    private fun normalizeUserCode(raw: String): String {
-        val trimmed = raw.trim()
-        if (trimmed.isEmpty()) return ""
-        val looksLikeHtml = Regex("<(html|head|body|canvas|script|style)\\b", RegexOption.IGNORE_CASE).containsMatchIn(trimmed)
-        return if (!looksLikeHtml) {
-            trimmed
-        } else {
-            trimmed
-        }
     }
 
     private fun escapeJsString(str: String): String {

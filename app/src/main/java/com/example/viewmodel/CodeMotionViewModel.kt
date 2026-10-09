@@ -16,6 +16,8 @@ import com.example.model.RenderState
 import com.example.model.SavedVideo
 import com.example.model.VideoPreset
 import com.example.model.VideoResolution
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +30,20 @@ enum class NavigationTab(val label: String) {
     EXPORT("Export Video"),
     TEMPLATES("Presets"),
     GALLERY("Saved Videos")
+}
+
+sealed interface DownloadState {
+    data object Idle : DownloadState
+    data class Downloading(
+        val progress: Float,
+        val percent: Int,
+        val message: String
+    ) : DownloadState
+    data class Success(
+        val folderName: String,
+        val filename: String
+    ) : DownloadState
+    data class Error(val message: String) : DownloadState
 }
 
 class CodeMotionViewModel(application: Application) : AndroidViewModel(application) {
@@ -45,6 +61,9 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _renderState = MutableStateFlow<RenderState>(RenderState.Idle)
     val renderState: StateFlow<RenderState> = _renderState.asStateFlow()
+
+    private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
+    val downloadState: StateFlow<DownloadState> = _downloadState.asStateFlow()
 
     private val _savedVideos = MutableStateFlow<List<SavedVideo>>(emptyList())
     val savedVideos: StateFlow<List<SavedVideo>> = _savedVideos.asStateFlow()
@@ -64,6 +83,8 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     val bridge = WebCodecsBridge(application, viewModelScope)
 
     var boundWebView: WebView? = null
+
+    private var codeDebounceJob: Job? = null
 
     init {
         loadSavedVideos()
@@ -109,7 +130,7 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
 
                         Toast.makeText(
                             getApplication(),
-                            "✅ Render Selesai! Video siap diputar atau di-download.",
+                            "✅ Render Selesai! Preview MP4 ditampilkan di bawah.",
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -120,22 +141,32 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                     }
 
                     is BridgeEvent.PreviewLoaded -> {
-                        // Preview loaded
+                        // Preview successfully loaded in viewport
                     }
 
                     is BridgeEvent.Log -> {
-                        // Debug log
+                        // Log message
                     }
                 }
             }
         }
     }
 
+    /**
+     * Updates code and automatically debounces preview refresh in real-time
+     * so user sees changes live in the viewport as they type.
+     */
     fun updateCode(code: String) {
         _userCode.value = code
+        codeDebounceJob?.cancel()
+        codeDebounceJob = viewModelScope.launch {
+            delay(400) // 400ms debounce
+            _reloadPreviewTrigger.update { it + 1 }
+        }
     }
 
     fun applyCodeToPreview() {
+        codeDebounceJob?.cancel()
         _reloadPreviewTrigger.update { it + 1 }
     }
 
@@ -148,7 +179,7 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                 fps = preset.defaultFps
             )
         }
-        _reloadPreviewTrigger.update { it + 1 }
+        applyCodeToPreview()
     }
 
     fun updateResolution(resolution: VideoResolution) {
@@ -190,6 +221,10 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
         _renderState.value = RenderState.Idle
     }
 
+    fun dismissDownloadState() {
+        _downloadState.value = DownloadState.Idle
+    }
+
     fun loadSavedVideos() {
         viewModelScope.launch {
             _savedVideos.value = storageManager.getSavedVideos()
@@ -200,16 +235,39 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
         _selectedVideoForPlayback.value = video
     }
 
+    /**
+     * Downloads video MP4 into "Download/Code Motion Video" folder
+     * with live progress indicator, spinner, and percentage.
+     */
     fun downloadVideo(video: SavedVideo) {
         viewModelScope.launch {
-            val uri = storageManager.downloadToPublicDownloadFolder(video.file)
+            _downloadState.value = DownloadState.Downloading(
+                progress = 0.05f,
+                percent = 5,
+                message = "Memulai proses download ${video.file.name}..."
+            )
+
+            val uri = storageManager.downloadToCodeMotionFolder(video.file) { progress ->
+                val pct = (progress * 100).toInt().coerceIn(0, 100)
+                _downloadState.value = DownloadState.Downloading(
+                    progress = progress,
+                    percent = pct,
+                    message = "Menyimpan ke folder Download/Code Motion Video ($pct%)..."
+                )
+            }
+
             if (uri != null) {
+                _downloadState.value = DownloadState.Success(
+                    folderName = "Download/Code Motion Video",
+                    filename = video.file.name
+                )
                 Toast.makeText(
                     getApplication(),
-                    "⬇ Video berhasil di-download ke folder Download / Galeri:\n${video.file.name}",
+                    "✅ Download Selesai! Tersimpan di: Download/Code Motion Video/${video.file.name}",
                     Toast.LENGTH_LONG
                 ).show()
             } else {
+                _downloadState.value = DownloadState.Error("Gagal men-download video ke penyimpanan lokal.")
                 Toast.makeText(getApplication(), "Gagal men-download video.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -219,7 +277,7 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             val uri = storageManager.saveToDeviceGallery(video.file)
             val msg = if (uri != null) {
-                "✅ Berhasil disimpan ke Galeri (Movies/CodeMotion)"
+                "✅ Berhasil disimpan ke Galeri (Movies/Code Motion Video)"
             } else {
                 "Gagal menyimpan ke Galeri"
             }
