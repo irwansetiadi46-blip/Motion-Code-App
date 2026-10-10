@@ -1,5 +1,5 @@
 {
-  "name": "CodeMotion",
+  "name": "WAR MOTION",
   "description": "Convert programming syntax into real-time visual animations and render deterministic HD/Full HD videos",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

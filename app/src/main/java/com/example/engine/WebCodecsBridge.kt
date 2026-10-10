@@ -161,4 +161,19 @@ class WebCodecsBridge(
             _events.emit(BridgeEvent.Log(message))
         }
     }
+
+    fun cancelActiveRender() {
+        synchronized(streamLock) {
+            try {
+                activeOutputStream?.close()
+                activeOutputStream = null
+                activeOutputFile?.let { file ->
+                    if (file.exists()) file.delete()
+                }
+                activeOutputFile = null
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 }

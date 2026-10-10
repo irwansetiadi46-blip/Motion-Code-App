@@ -225,7 +225,44 @@ class VideoStorageManager(private val context: Context) {
         }
     }
 
+    fun saveVideoMetadata(videoFile: File, metadata: com.example.model.VideoMetadata) {
+        try {
+            val metaFile = File(videoDir, "${videoFile.nameWithoutExtension}.meta.json")
+            val json = org.json.JSONObject().apply {
+                put("title", metadata.title)
+                put("description", metadata.description)
+                put("keywords", metadata.keywords)
+            }
+            metaFile.writeText(json.toString())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun loadVideoMetadata(videoFile: File): com.example.model.VideoMetadata? {
+        return try {
+            val metaFile = File(videoDir, "${videoFile.nameWithoutExtension}.meta.json")
+            if (metaFile.exists()) {
+                val json = org.json.JSONObject(metaFile.readText())
+                com.example.model.VideoMetadata(
+                    title = json.optString("title", ""),
+                    description = json.optString("description", ""),
+                    keywords = json.optString("keywords", "")
+                )
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     fun deleteVideo(videoFile: File): Boolean {
+        try {
+            val metaFile = File(videoDir, "${videoFile.nameWithoutExtension}.meta.json")
+            if (metaFile.exists()) metaFile.delete()
+        } catch (_: Exception) {}
         return if (videoFile.exists()) videoFile.delete() else false
     }
 }

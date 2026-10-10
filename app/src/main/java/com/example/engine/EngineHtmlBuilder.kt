@@ -465,7 +465,22 @@ window.reloadPreviewWithCode = function(newCode) {
   loadLivePreview(userCodeRaw, false);
 };
 
+window.__IS_RENDER_CANCELLED__ = false;
+window.__CURRENT_ENCODER__ = null;
+
+window.cancelVideoRender = function() {
+  window.__IS_RENDER_CANCELLED__ = true;
+  if (window.__CURRENT_ENCODER__) {
+    try { window.__CURRENT_ENCODER__.close(); } catch(e) {}
+    window.__CURRENT_ENCODER__ = null;
+  }
+  const banner = document.getElementById('renderBanner');
+  if (banner) banner.style.display = 'none';
+  loadLivePreview(userCodeRaw, false);
+};
+
 window.startVideoRender = async function() {
+  window.__IS_RENDER_CANCELLED__ = false;
   const banner = document.getElementById('renderBanner');
   try {
     if (banner) banner.style.display = 'block';
@@ -603,6 +618,7 @@ window.startVideoRender = async function() {
       error: (e) => { encoderError = e; postError("Encoder error: " + (e.message || e)); }
     });
     encoder.configure(config);
+    window.__CURRENT_ENCODER__ = encoder;
 
     const harness = iwin.__HARNESS__;
     const dt = 1000 / FPS;
@@ -611,6 +627,11 @@ window.startVideoRender = async function() {
     postProgress(0, totalFrames, 0.0, "Merender frame 0/" + totalFrames + "...");
 
     for (let i = 0; i < totalFrames; i++) {
+      if (window.__IS_RENDER_CANCELLED__) {
+        try { encoder.close(); } catch (e) {}
+        window.__CURRENT_ENCODER__ = null;
+        return;
+      }
       if (encoderError) throw encoderError;
 
       harness.step(dt);
@@ -633,10 +654,21 @@ window.startVideoRender = async function() {
       // Keep encode queue bounded
       let waitCount = 0;
       while (encoder.encodeQueueSize > 2 && waitCount < 50) {
+        if (window.__IS_RENDER_CANCELLED__) {
+          try { encoder.close(); } catch (e) {}
+          window.__CURRENT_ENCODER__ = null;
+          return;
+        }
         await new Promise(r => setTimeout(r, 10));
         waitCount++;
         if (encoderError) throw encoderError;
       }
+    }
+
+    if (window.__IS_RENDER_CANCELLED__) {
+      try { encoder.close(); } catch (e) {}
+      window.__CURRENT_ENCODER__ = null;
+      return;
     }
 
     postProgress(totalFrames, totalFrames, 0.98, "Menyelesaikan MP4 dan menyatukan trek...");

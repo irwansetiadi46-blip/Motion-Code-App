@@ -6,7 +6,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,14 +52,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
 import com.example.ui.theme.TerminalBg
-import com.example.ui.theme.TerminalBorder
-import com.example.ui.theme.TerminalGutter
-import com.example.ui.theme.TerminalGutterText
 
 @Composable
 fun CodeTerminalEditor(
@@ -87,10 +82,6 @@ fun CodeTerminalEditor(
         }
     }
 
-    val lineCount = remember(textFieldValue.text) {
-        if (textFieldValue.text.isEmpty()) 1 else textFieldValue.text.lines().size
-    }
-
     val snippets = listOf(
         "const " to "const ",
         "let " to "let ",
@@ -115,7 +106,7 @@ fun CodeTerminalEditor(
         border = androidx.compose.foundation.BorderStroke(1.5.dp, PurpleBorder)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Terminal Header with macOS dots and actions
+            // Terminal Header: "Terminal" dengan indikator dot hijau
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -124,20 +115,23 @@ fun CodeTerminalEditor(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Dots & Title
+                // Indikator dot hijau & Text "Terminal"
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFFF5F56)))
-                    Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFFFFBD2E)))
-                    Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(Color(0xFF27C93F)))
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(9.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981)) // Green dot indicator
+                    )
                     Text(
-                        text = "animation.js",
-                        style = MaterialTheme.typography.labelSmall.copy(
+                        text = "Terminal",
+                        style = MaterialTheme.typography.labelMedium.copy(
                             fontFamily = FontFamily.Monospace,
-                            color = Color(0xFF94A3B8)
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
                     )
                 }
@@ -147,7 +141,7 @@ fun CodeTerminalEditor(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Tombol Edit (Fullscreen Terminal Mode) di samping kiri icon copy
+                    // Tombol Edit (Fullscreen Terminal Mode)
                     IconButton(
                         onClick = onOpenFullscreen,
                         modifier = Modifier.size(28.dp)
@@ -246,76 +240,47 @@ fun CodeTerminalEditor(
                 }
             }
 
-            // Line numbers & Code text area with Syntax Highlighting
-            Row(
+            // Code text area without line numbers gutter (clean & spacious)
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(260.dp)
                     .background(TerminalBg)
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
-                // Line Numbers Gutter
-                Column(
-                    modifier = Modifier
-                        .width(42.dp)
-                        .background(TerminalGutter)
-                        .padding(vertical = 12.dp, horizontal = 6.dp),
-                    horizontalAlignment = Alignment.End
-                ) {
-                    val maxLinesShown = minOf(lineCount, 60)
-                    for (i in 1..maxLinesShown) {
-                        Text(
-                            text = "$i",
-                            style = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                lineHeight = 18.sp,
-                                color = TerminalGutterText
-                            )
-                        )
-                    }
-                }
-
-                // Editor Text Field with live Syntax Highlighting
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                ) {
-                    if (textFieldValue.text.isEmpty()) {
-                        Text(
-                            text = "// Tulis atau paste kode animasi canvas di sini...\n// Contoh: c.getContext('2d');\n// Wajib ada loop animasi.",
-                            style = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
-                                lineHeight = 18.sp,
-                                color = Color(0xFF475569)
-                            )
-                        )
-                    }
-
-                    BasicTextField(
-                        value = textFieldValue,
-                        onValueChange = {
-                            textFieldValue = it
-                            onCodeChange(it.text)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = TextStyle(
+                if (textFieldValue.text.isEmpty()) {
+                    Text(
+                        text = "// Tulis atau paste kode animasi canvas di sini...\n// Contoh: c.getContext('2d');\n// Wajib ada loop animasi.",
+                        style = TextStyle(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
                             lineHeight = 18.sp,
-                            color = Color(0xFFE2E8F0)
-                        ),
-                        cursorBrush = SolidColor(ElectricCyan),
-                        visualTransformation = JsSyntaxHighlighter,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.None,
-                            autoCorrect = false
+                            color = Color(0xFF475569)
                         )
                     )
                 }
-            }
 
+                BasicTextField(
+                    value = textFieldValue,
+                    onValueChange = {
+                        textFieldValue = it
+                        onCodeChange(it.text)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        color = Color(0xFFE2E8F0)
+                    ),
+                    cursorBrush = SolidColor(ElectricCyan),
+                    visualTransformation = JsSyntaxHighlighter,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrect = false
+                    )
+                )
+            }
         }
     }
 }

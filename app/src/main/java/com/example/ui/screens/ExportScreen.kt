@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Info
@@ -56,6 +57,7 @@ import com.example.model.QualityBitrate
 import com.example.model.RenderState
 import com.example.ui.components.LiveAnimationViewport
 import com.example.ui.components.ResolutionSelector
+import com.example.ui.components.StockMetadataCard
 import com.example.ui.components.VideoPlayerView
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkBorder
@@ -80,13 +82,15 @@ fun ExportScreen(
     val selectedVideo by viewModel.selectedVideoForPlayback.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
     val reloadTrigger by viewModel.reloadPreviewTrigger.collectAsState()
+    val currentMetadata by viewModel.currentMetadata.collectAsState()
+    val isGeneratingMetadata by viewModel.isGeneratingMetadata.collectAsState()
 
     val fpsOptions = listOf(24, 30, 60)
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(DarkBackground)
+            .background(Color.Transparent)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -287,81 +291,42 @@ fun ExportScreen(
             }
         }
 
-        // Summary Info Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF0B1426)),
-            border = BorderStroke(1.5.dp, PurpleBorder)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = SkyGlow,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = "Ringkasan Render Deterministik",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    )
-                }
-
-                val estMb = DecimalFormat("#.##").format(renderConfig.estimatedSizeBytes / (1024f * 1024f))
-                Text(
-                    text = "• Resolusi Target: ${renderConfig.resolution.width}×${renderConfig.resolution.height} (${renderConfig.resolution.label})\n" +
-                            "• Total Frame: ${renderConfig.totalFrames} frame (${renderConfig.durationSeconds}s × ${renderConfig.fps}fps)\n" +
-                            "• Bitrate Efektif: ${(renderConfig.safeBitrateBps / 1_000_000f)} Mbps\n" +
-                            "• Estimasi Ukuran File: ~$estMb MB MP4\n" +
-                            "• Virtual Time Harness: deterministik frame-demi-frame tanpa frame drop",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        color = Color(0xFF94A3B8),
-                        lineHeight = 18.sp
-                    )
-                )
-            }
-        }
-
-        // Render Action Button
+        // Render / Cancel Action Button
         val isRendering = renderState is RenderState.Rendering || renderState is RenderState.Preparing || renderState is RenderState.Finalizing
         Button(
-            onClick = { viewModel.triggerRender() },
-            enabled = !isRendering,
+            onClick = {
+                if (isRendering) {
+                    viewModel.cancelRender()
+                } else {
+                    viewModel.triggerRender()
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                .height(50.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isRendering) Color(0xFFE11D48) else ElectricBlue
+            ),
             shape = RoundedCornerShape(10.dp)
         ) {
             if (isRendering) {
-                CircularProgressIndicator(
-                    color = Color.White,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(20.dp)
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Cancel Render",
+                    modifier = Modifier.size(20.dp),
+                    tint = Color.White
                 )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text("Sedang Merender...", fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Cancel", fontWeight = FontWeight.Bold, color = Color.White)
             } else {
                 Icon(
                     imageVector = Icons.Default.Movie,
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(20.dp),
+                    tint = Color.White
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("🎬 Render ke MP4 (${renderConfig.resolution.width}×${renderConfig.resolution.height})", fontWeight = FontWeight.Bold)
+                Text("Render Mp4", fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
 
@@ -467,11 +432,27 @@ fun ExportScreen(
                     video = selectedVideo!!,
                     onDownload = { viewModel.downloadVideo(selectedVideo!!) },
                     onShare = { viewModel.shareVideo(selectedVideo!!) },
-                    onDelete = { viewModel.deleteVideo(selectedVideo!!) },
-                    onSaveToGallery = { viewModel.saveVideoToGallery(selectedVideo!!) }
+                    onDelete = { viewModel.deleteVideo(selectedVideo!!) }
                 )
             }
         }
+
+        // Section: Stock Footage Metadata (Title, Description, Keywords)
+        StockMetadataCard(
+            metadata = currentMetadata,
+            onMetadataChange = { viewModel.updateCurrentMetadata(it) },
+            onGenerateAi = { viewModel.generateMetadataForCurrentAnimation() },
+            onDownloadCsv = {
+                val videoFilename = selectedVideo?.file?.name ?: "code_motion_video.mp4"
+                viewModel.downloadMetadataCsv(videoFilename, currentMetadata)
+            },
+            onShareCsv = {
+                val videoFilename = selectedVideo?.file?.name ?: "code_motion_video.mp4"
+                viewModel.shareMetadataCsv(videoFilename, currentMetadata)
+            },
+            isGenerating = isGeneratingMetadata,
+            videoFilename = selectedVideo?.file?.name ?: "code_motion_video.mp4"
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
     }

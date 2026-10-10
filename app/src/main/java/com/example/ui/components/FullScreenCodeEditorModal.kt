@@ -8,15 +8,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,12 +33,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextLayoutResult
@@ -53,13 +55,6 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.SkyGlow
 
-/**
- * Clean, distraction-free Termux-style terminal editor for Android.
- * Pure terminal experience: code editing only, cursor-aware snippet insertion.
- * Keyboard behaves deterministically: tapping text toggles/shows keyboard,
- * scrolling never triggers or dismisses the soft keyboard.
- * Line gutter is synchronized with text and allows scrolling 10 lines past EOF.
- */
 @Composable
 fun FullScreenCodeEditorModal(
     code: String,
@@ -80,10 +75,6 @@ fun FullScreenCodeEditorModal(
         }
     }
 
-    val lineCount = remember(textFieldValue.text) {
-        if (textFieldValue.text.isEmpty()) 1 else textFieldValue.text.lines().size
-    }
-
     val editorVerticalScrollState = rememberScrollState()
     val editorHorizontalScrollState = rememberScrollState()
 
@@ -93,9 +84,7 @@ fun FullScreenCodeEditorModal(
     var isKeyboardActive by remember { mutableStateOf(false) }
 
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val density = LocalDensity.current
 
-    // Termux extra keys bar (matching Termux mobile keyboard toolbar)
     val termuxKeys = listOf(
         "ESC" to "",
         "TAB" to "  ",
@@ -115,7 +104,6 @@ fun FullScreenCodeEditorModal(
         "loop" to "function loop(t) {\n  requestAnimationFrame(loop);\n}\nrequestAnimationFrame(loop);"
     )
 
-    // Android back gesture automatically saves and exits
     BackHandler {
         onDismiss()
     }
@@ -130,61 +118,50 @@ fun FullScreenCodeEditorModal(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF000000)) // Pure Termux black
+                .background(Color(0xFF000000))
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                            isKeyboardActive = false
+                        }
+                    )
+                }
         ) {
-            // Minimal Termux Prompt Header (Clean Termux Shell banner)
+            // Terminal Header with green dot indicator
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF0A0F1A))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .size(9.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981))
+                    )
                     Text(
-                        text = "root@termux",
+                        text = "Terminal",
                         style = TextStyle(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            color = Color(0xFF10B981) // Termux Green
-                        )
-                    )
-                    Text(
-                        text = ":",
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             color = Color.White
-                        )
-                    )
-                    Text(
-                        text = "~/animation.js",
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp,
-                            color = Color(0xFF38BDF8) // Termux Blue
-                        )
-                    )
-                    Text(
-                        text = "$ nano",
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            color = Color(0xFF94A3B8)
                         )
                     )
                 }
 
-                // Minimal exit indicator button (ESC)
                 Surface(
                     onClick = onDismiss,
                     shape = RoundedCornerShape(4.dp),
@@ -203,7 +180,7 @@ fun FullScreenCodeEditorModal(
                 }
             }
 
-            // Termux Extra-Keys toolbar (Above software keyboard)
+            // Quick Keys toolbar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -244,127 +221,78 @@ fun FullScreenCodeEditorModal(
                 }
             }
 
-            // Pure Terminal Editor Area with Synchronized Gutter & Syntax Highlighting
-            // Scroll behavior: Scrolling does NOT toggle/show/hide soft keyboard.
-            // Tap behavior: Only a tap explicitly toggles or shows/hides soft keyboard.
-            // Extra scroll space: Allows scrolling 10 lines beyond the end of code.
-            Row(
+            // Pure Terminal Editor Area without line numbers
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
                     .background(Color(0xFF000000))
-            ) {
-                // Termux Line Numbers Gutter (Synced with editorVerticalScrollState)
-                Column(
-                    modifier = Modifier
-                        .width(44.dp)
-                        .fillMaxHeight()
-                        .background(Color(0xFF05080E))
-                        .verticalScroll(editorVerticalScrollState)
-                        .padding(vertical = 10.dp, horizontal = 4.dp),
-                    horizontalAlignment = Alignment.End
-                ) {
-                    val maxLineNumber = maxOf(lineCount, 1)
-                    for (i in 1..maxLineNumber) {
-                        Text(
-                            text = "$i",
-                            style = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
-                                lineHeight = 20.sp,
-                                color = Color(0xFF334155)
-                            )
-                        )
-                    }
-                    // 10 baris padding kosong di bawah agar gutter selaras saat user scroll melebihi baris terakhir
-                    for (i in 1..10) {
-                        Text(
-                            text = "",
-                            style = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
-                                lineHeight = 20.sp
-                            )
-                        )
-                    }
-                }
+                    .verticalScroll(editorVerticalScrollState)
+                    .horizontalScroll(editorHorizontalScrollState)
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { tapOffset ->
+                                if (isKeyboardActive) {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus()
+                                    isKeyboardActive = false
+                                } else {
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                    isKeyboardActive = true
 
-                // Clean Termux Code Surface
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .verticalScroll(editorVerticalScrollState)
-                        .horizontalScroll(editorHorizontalScrollState)
-                        .padding(horizontal = 10.dp, vertical = 10.dp)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { tapOffset ->
-                                    // Tap hanya pada teks yang memicu keyboard muncul / tersembunyi
-                                    if (isKeyboardActive) {
-                                        // Jika keyboard sedang muncul dan di-tap lagi, toggle hide
-                                        keyboardController?.hide()
-                                        focusManager.clearFocus()
-                                        isKeyboardActive = false
-                                    } else {
-                                        // Jika keyboard belum muncul, tap memunculkan keyboard dan memindahkan cursor
-                                        focusRequester.requestFocus()
-                                        keyboardController?.show()
-                                        isKeyboardActive = true
-
-                                        textLayoutResult?.let { layout ->
-                                            val offset = layout.getOffsetForPosition(tapOffset)
-                                            textFieldValue = textFieldValue.copy(
-                                                selection = TextRange(offset.coerceIn(0, textFieldValue.text.length))
-                                            )
-                                        }
+                                    textLayoutResult?.let { layout ->
+                                        val offset = layout.getOffsetForPosition(tapOffset)
+                                        textFieldValue = textFieldValue.copy(
+                                            selection = TextRange(offset.coerceIn(0, textFieldValue.text.length))
+                                        )
                                     }
                                 }
-                            )
-                        }
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        BasicTextField(
-                            value = textFieldValue,
-                            onValueChange = {
-                                textFieldValue = it
-                                onCodeChange(it.text)
-                            },
-                            onTextLayout = { layoutResult ->
-                                textLayoutResult = layoutResult
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester),
-                            textStyle = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.5.sp,
-                                lineHeight = 20.sp,
-                                color = Color(0xFFE2E8F0)
-                            ),
-                            cursorBrush = SolidColor(ElectricCyan),
-                            visualTransformation = JsSyntaxHighlighter,
-                            keyboardOptions = KeyboardOptions(
-                                capitalization = KeyboardCapitalization.None,
-                                autoCorrect = false
-                            )
-                        )
-
-                        // 10 baris kosong ekstra di bawah teks code (20.sp * 10 = 200.dp sepadan)
-                        Column {
-                            repeat(10) {
-                                Text(
-                                    text = " ",
-                                    style = TextStyle(
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 12.5.sp,
-                                        lineHeight = 20.sp,
-                                        color = Color.Transparent
-                                    )
-                                )
                             }
+                        )
+                    }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    BasicTextField(
+                        value = textFieldValue,
+                        onValueChange = {
+                            textFieldValue = it
+                            onCodeChange(it.text)
+                        },
+                        onTextLayout = { layoutResult ->
+                            textLayoutResult = layoutResult
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                        textStyle = TextStyle(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.5.sp,
+                            lineHeight = 20.sp,
+                            color = Color(0xFFE2E8F0)
+                        ),
+                        cursorBrush = SolidColor(ElectricCyan),
+                        visualTransformation = JsSyntaxHighlighter,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            autoCorrect = false
+                        )
+                    )
+
+                    Column {
+                        repeat(10) {
+                            Text(
+                                text = " ",
+                                style = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.5.sp,
+                                    lineHeight = 20.sp,
+                                    color = Color.Transparent
+                                )
+                            )
                         }
                     }
                 }

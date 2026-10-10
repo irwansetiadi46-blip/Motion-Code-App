@@ -73,7 +73,7 @@ data class QualityBitrate(
 
 data class RenderConfig(
     val resolution: VideoResolution = VideoResolution.ALL.first { it.isDefault },
-    val durationSeconds: Int = 6,
+    val durationSeconds: Int = 10,
     val fps: Int = 60,
     val quality: QualityBitrate = QualityBitrate.ALL[1] // 8 Mbps Standard HD
 ) {

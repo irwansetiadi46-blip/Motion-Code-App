@@ -40,6 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.SavedVideo
+import com.example.model.VideoMetadata
+import com.example.ui.components.StockMetadataCard
 import com.example.ui.components.VideoPlayerView
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkBorder
@@ -62,11 +64,13 @@ fun GalleryScreen(
 ) {
     val savedVideos by viewModel.savedVideos.collectAsState()
     val selectedVideo by viewModel.selectedVideoForPlayback.collectAsState()
+    val videoMetadataMap by viewModel.videoMetadataMap.collectAsState()
+    val isGeneratingMetadata by viewModel.isGeneratingMetadata.collectAsState()
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(DarkBackground)
+            .background(Color.Transparent)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -142,29 +146,50 @@ fun GalleryScreen(
                 }
             }
         } else {
-            // Active Player if selected
-            if (selectedVideo != null) {
-                VideoPlayerView(
-                    video = selectedVideo!!,
-                    onDownload = { viewModel.downloadVideo(selectedVideo!!) },
-                    onSaveToGallery = { viewModel.saveVideoToGallery(selectedVideo!!) },
-                    onShare = { viewModel.shareVideo(selectedVideo!!) },
-                    onDelete = { viewModel.deleteVideo(selectedVideo!!) }
-                )
-            }
-
-            Text(
-                text = "Daftar File (${savedVideos.size} video):",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF94A3B8)
-                )
-            )
-
             LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                if (selectedVideo != null) {
+                    item(key = "player_${selectedVideo!!.id}") {
+                        VideoPlayerView(
+                            video = selectedVideo!!,
+                            onDownload = { viewModel.downloadVideo(selectedVideo!!) },
+                            onSaveToGallery = { viewModel.saveVideoToGallery(selectedVideo!!) },
+                            onShare = { viewModel.shareVideo(selectedVideo!!) },
+                            onDelete = { viewModel.deleteVideo(selectedVideo!!) }
+                        )
+                    }
+
+                    item(key = "meta_${selectedVideo!!.id}") {
+                        val videoMeta = videoMetadataMap[selectedVideo!!.id] ?: VideoMetadata(
+                            title = selectedVideo!!.title.removeSuffix(".mp4").replace("_", " "),
+                            description = "Seamless programming code syntax animation with futuristic digital particles.",
+                            keywords = "programming, code, syntax, animation, javascript, developer, software, background, 4k, tech, digital, loop"
+                        )
+
+                        StockMetadataCard(
+                            metadata = videoMeta,
+                            onMetadataChange = { viewModel.updateMetadataForVideo(selectedVideo!!.id, it, selectedVideo!!.file) },
+                            onGenerateAi = { viewModel.generateMetadataForSavedVideo(selectedVideo!!) },
+                            onDownloadCsv = { viewModel.downloadMetadataCsv(selectedVideo!!.file.name, videoMeta) },
+                            onShareCsv = { viewModel.shareMetadataCsv(selectedVideo!!.file.name, videoMeta) },
+                            isGenerating = isGeneratingMetadata,
+                            videoFilename = selectedVideo!!.file.name
+                        )
+                    }
+                }
+
+                item(key = "header_list") {
+                    Text(
+                        text = "Daftar File (${savedVideos.size} video):",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF94A3B8)
+                        ),
+                        modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
                 items(savedVideos, key = { it.id }) { video ->
                     val isPlayingThis = selectedVideo?.id == video.id
                     Card(
