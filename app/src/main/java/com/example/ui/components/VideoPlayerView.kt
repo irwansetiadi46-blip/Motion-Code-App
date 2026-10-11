@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.example.model.SavedVideo
+import com.example.ui.theme.CyberPink
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.ElectricBlue
@@ -62,9 +64,9 @@ import java.text.DecimalFormat
 fun VideoPlayerView(
     video: SavedVideo,
     onDownload: () -> Unit,
-    onShare: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    onShare: (() -> Unit)? = null,
     onSaveToGallery: (() -> Unit)? = null
 ) {
     var isPlaying by remember { mutableStateOf(false) }
@@ -204,75 +206,64 @@ fun VideoPlayerView(
                     }
                 }
 
-                // Primary Prominent Download Button
-                Button(
-                    onClick = onDownload,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "⬇ Download MP4",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    )
-                }
-
-                // Secondary Action Buttons Row (Share, Save to Gallery, Delete)
+                // Action Buttons Row (Download MP4 with Blue to Pink Gradient & Delete)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
-                        onClick = onShare,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = BorderStroke(1.dp, DarkBorder),
-                        shape = RoundedCornerShape(8.dp)
+                    val downloadGradient = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF0284C7), // Vibrant Electric Blue
+                            Color(0xFF2563EB), // Deep Royal Blue
+                            Color(0xFF9333EA), // Purple accent bridge
+                            Color(0xFFE11D48), // Deep Pink
+                            Color(0xFFF43F5E)  // Vibrant Cyber Pink
+                        )
+                    )
+
+                    Button(
+                        onClick = onDownload,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(downloadGradient),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            imageVector = Icons.Default.Download,
+                            contentDescription = "Download MP4",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Bagikan", fontSize = 12.sp)
-                    }
-
-                    if (onSaveToGallery != null) {
-                        OutlinedButton(
-                            onClick = onSaveToGallery,
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                            border = BorderStroke(1.dp, DarkBorder),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Ke Galeri", fontSize = 12.sp)
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Download MP4",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = Color.White
+                            )
+                        )
                     }
 
                     IconButton(
                         onClick = onDelete,
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .background(Color(0xFF3B1824))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Hapus Video",
                             tint = Color(0xFFF43F5E),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }

@@ -66,6 +66,8 @@ fun StockMetadataCard(
     metadata: VideoMetadata,
     onMetadataChange: (VideoMetadata) -> Unit,
     onDownloadCsv: () -> Unit,
+    onGenerateMetadata: () -> Unit = {},
+    onCancelGenerate: () -> Unit = {},
     isGenerating: Boolean = false,
     videoFilename: String = "code_motion_video.mp4",
     modifier: Modifier = Modifier
@@ -157,7 +159,59 @@ fun StockMetadataCard(
                 }
             }
 
-            // Indikator proses generate paralel
+            // Tombol GENERATE / CANCEL di atas File name di tab export
+            Button(
+                onClick = {
+                    if (isGenerating) {
+                        onCancelGenerate()
+                    } else {
+                        onGenerateMetadata()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isGenerating) Color(0xFFE11D48) else SkyGlow,
+                    contentColor = if (isGenerating) Color.White else Color(0xFF070B19)
+                ),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+            ) {
+                if (isGenerating) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 2.5.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Cancel",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = "Generate Metadata",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "GENERATE",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            letterSpacing = 1.sp
+                        )
+                    )
+                }
+            }
+
+            // Indikator status proses generate
             AnimatedVisibility(visible = isGenerating) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -176,7 +230,7 @@ fun StockMetadataCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "Men-generate metadata paralel bersama render MP4...",
+                            text = "Men-generate metadata dari kode terminal (Batas 30s)... Tekan Cancel untuk membatalkan.",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = SkyGlow,
                                 fontWeight = FontWeight.Medium

@@ -30,7 +30,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,166 +70,196 @@ fun LiveAnimationViewport(
     val context = LocalContext.current
     val aspect = renderConfig.resolution.aspectRatioFloat
 
-    val webView = remember {
-        WebView(context).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                mediaPlaybackRequiresUserGesture = false
-                allowFileAccess = true
-                allowContentAccess = true
-                cacheMode = WebSettings.LOAD_DEFAULT
+    var webViewKey by remember { mutableIntStateOf(0) }
+
+    key(webViewKey) {
+        val webView = remember(webViewKey) {
+            WebView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    mediaPlaybackRequiresUserGesture = false
+                    allowFileAccess = true
+                    allowContentAccess = true
+                    cacheMode = WebSettings.LOAD_DEFAULT
+                }
+                setBackgroundColor(android.graphics.Color.BLACK)
+                webChromeClient = WebChromeClient()
+                webViewClient = object : WebViewClient() {
+                    override fun onRenderProcessGone(
+                        view: WebView?,
+                        detail: android.webkit.RenderProcessGoneDetail?
+                    ): Boolean {
+                        android.util.Log.w(
+                            "LiveAnimationViewport",
+                            "Chromium renderer process gone detected (didCrash=${detail?.didCrash()}). Recovering automatically..."
+                        )
+                        try {
+                            onWebViewDisposed?.invoke()
+                            (view?.parent as? ViewGroup)?.removeView(view)
+                            view?.stopLoading()
+                            view?.webChromeClient = null
+                            view?.webViewClient = WebViewClient()
+                            view?.removeJavascriptInterface("AndroidBridge")
+                            view?.removeAllViews()
+                            view?.destroy()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                        // Re-create a fresh, healthy WebView instance
+                        webViewKey++
+                        return true
+                    }
+                }
+                addJavascriptInterface(bridge, "AndroidBridge")
             }
-            setBackgroundColor(android.graphics.Color.BLACK)
-            webChromeClient = WebChromeClient()
-            webViewClient = object : WebViewClient() {
-                override fun onRenderProcessGone(
-                    view: WebView?,
-                    detail: android.webkit.RenderProcessGoneDetail?
-                ): Boolean {
-                    // Prevent crash if cloud emulator Mesa / OpenGL render node crashes or restarts
-                    return true
+        }
+
+        LaunchedEffect(webView) {
+            onWebViewReady(webView)
+        }
+
+        // Full load whenever resolution, fps, duration, or bitrate changes
+        LaunchedEffect(
+            renderConfig.resolution,
+            renderConfig.fps,
+            renderConfig.durationSeconds,
+            renderConfig.quality.bitrateBps
+        ) {
+            val html = EngineHtmlBuilder.buildHtml(context, userCode, renderConfig)
+            webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
+        }
+
+        // Fast, flicker-free live code reload whenever reloadTrigger updates
+        LaunchedEffect(reloadTrigger) {
+            if (reloadTrigger > 0L) {
+                try {
+                    val quoted = JSONObject.quote(userCode)
+                    webView.evaluateJavascript(
+                        "if (window.reloadPreviewWithCode) { window.reloadPreviewWithCode($quoted); } else { window.location.reload(); }",
+                        null
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
-            addJavascriptInterface(bridge, "AndroidBridge")
         }
-    }
 
-    LaunchedEffect(webView) {
-        onWebViewReady(webView)
-    }
-
-    // Full load whenever resolution, fps, duration, or bitrate changes
-    LaunchedEffect(
-        renderConfig.resolution,
-        renderConfig.fps,
-        renderConfig.durationSeconds,
-        renderConfig.quality.bitrateBps
-    ) {
-        val html = EngineHtmlBuilder.buildHtml(context, userCode, renderConfig)
-        webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
-    }
-
-    // Fast, flicker-free live code reload whenever reloadTrigger updates
-    LaunchedEffect(reloadTrigger) {
-        if (reloadTrigger > 0L) {
-            val quoted = JSONObject.quote(userCode)
-            webView.evaluateJavascript(
-                "if (window.reloadPreviewWithCode) { window.reloadPreviewWithCode($quoted); } else { window.location.reload(); }",
-                null
-            )
-        }
-    }
-
-    DisposableEffect(webView) {
-        onDispose {
-            try {
-                onWebViewDisposed?.invoke()
-                (webView.parent as? ViewGroup)?.removeView(webView)
-                webView.stopLoading()
-                webView.loadUrl("about:blank")
-                webView.clearHistory()
-                webView.removeAllViews()
-                webView.destroy()
-            } catch (e: Exception) {
-                e.printStackTrace()
+        DisposableEffect(webView) {
+            onDispose {
+                try {
+                    onWebViewDisposed?.invoke()
+                    (webView.parent as? ViewGroup)?.removeView(webView)
+                    webView.stopLoading()
+                    webView.webChromeClient = null
+                    webView.webViewClient = WebViewClient()
+                    webView.removeJavascriptInterface("AndroidBridge")
+                    webView.removeAllViews()
+                    webView.destroy()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
-    }
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
-        border = androidx.compose.foundation.BorderStroke(1.5.dp, PurpleBorder)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // Header bar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF0F172A))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, PurpleBorder)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Header bar
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF0F172A))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF10B981))
-                    )
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
-                            color = SkyGlow
-                        )
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xFF1E293B)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF10B981))
+                        )
                         Text(
-                            text = "${renderConfig.resolution.width}×${renderConfig.resolution.height}",
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            text = title,
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                                color = ElectricCyan
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                                color = SkyGlow
                             )
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF1E293B)
+                        ) {
+                            Text(
+                                text = "${renderConfig.resolution.width}×${renderConfig.resolution.height}",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    color = ElectricCyan
+                                )
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            try {
+                                val quoted = JSONObject.quote(userCode)
+                                webView.evaluateJavascript(
+                                    "if (window.reloadPreviewWithCode) { window.reloadPreviewWithCode($quoted); } else { window.location.reload(); }",
+                                    null
+                                )
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Muat Ulang Preview",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
 
-                IconButton(
-                    onClick = {
-                        val quoted = JSONObject.quote(userCode)
-                        webView.evaluateJavascript(
-                            "if (window.reloadPreviewWithCode) { window.reloadPreviewWithCode($quoted); } else { window.location.reload(); }",
-                            null
-                        )
-                    },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Muat Ulang Preview",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-
-            // Canvas stage container preserving target aspect ratio
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                val clampedAspect = aspect.coerceIn(0.45f, 2.2f)
-                Box(
+                // Canvas stage container preserving target aspect ratio
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .aspectRatio(clampedAspect)
-                        .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
                 ) {
-                    AndroidView(
-                        factory = {
-                            (webView.parent as? ViewGroup)?.removeView(webView)
-                            webView
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    val clampedAspect = aspect.coerceIn(0.45f, 2.2f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(clampedAspect)
+                            .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
+                    ) {
+                        AndroidView(
+                            factory = {
+                                (webView.parent as? ViewGroup)?.removeView(webView)
+                                webView
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
         }

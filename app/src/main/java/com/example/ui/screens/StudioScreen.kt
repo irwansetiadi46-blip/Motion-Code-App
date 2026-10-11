@@ -411,9 +411,7 @@ fun StudioScreen(
             VideoPlayerView(
                 video = lastRenderedVideo!!,
                 onDownload = { viewModel.downloadVideo(lastRenderedVideo!!) },
-                onShare = { viewModel.shareVideo(lastRenderedVideo!!) },
-                onDelete = { viewModel.deleteVideo(lastRenderedVideo!!) },
-                onSaveToGallery = { viewModel.saveVideoToGallery(lastRenderedVideo!!) }
+                onDelete = { viewModel.deleteVideo(lastRenderedVideo!!) }
             )
         }
 

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -36,6 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -89,6 +91,7 @@ fun ExportScreen(
     val reloadTrigger by viewModel.reloadPreviewTrigger.collectAsState()
     val currentMetadata by viewModel.currentMetadata.collectAsState()
     val isGeneratingMetadata by viewModel.isGeneratingMetadata.collectAsState()
+    val failoverDialogState by viewModel.failoverDialogState.collectAsState()
 
     var showMicrostockDialog by remember { mutableStateOf(false) }
 
@@ -122,7 +125,7 @@ fun ExportScreen(
                 if (isRendering) {
                     viewModel.cancelRender()
                 } else {
-                    viewModel.startRenderAndGenerateMetadata()
+                    viewModel.startRenderVideo()
                 }
             },
             modifier = Modifier
@@ -255,7 +258,6 @@ fun ExportScreen(
             VideoPlayerView(
                 video = selectedVideo!!,
                 onDownload = { viewModel.downloadVideo(selectedVideo!!) },
-                onShare = { viewModel.shareVideo(selectedVideo!!) },
                 onDelete = { viewModel.deleteVideo(selectedVideo!!) }
             )
         }
@@ -266,6 +268,12 @@ fun ExportScreen(
             onMetadataChange = { viewModel.updateCurrentMetadata(it) },
             onDownloadCsv = {
                 showMicrostockDialog = true
+            },
+            onGenerateMetadata = {
+                viewModel.generateMetadataFromEditor()
+            },
+            onCancelGenerate = {
+                viewModel.cancelMetadataGeneration()
             },
             isGenerating = isGeneratingMetadata,
             videoFilename = selectedVideo?.file?.name ?: "code_motion_video.mp4"
@@ -457,5 +465,122 @@ fun ExportScreen(
         }
 
         else -> {}
+    }
+
+    // Modal Popup: Auto Failover Dialog (jika terjadi error API atau melewati batas waktu 30 detik)
+    if (failoverDialogState.isOpen) {
+        Dialog(
+            onDismissRequest = { viewModel.dismissFailoverDialog() },
+            properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(0.95f),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                border = BorderStroke(1.2.dp, Color(0xFFF59E0B))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0x33F59E0B),
+                        border = BorderStroke(1.dp, Color(0x66F59E0B)),
+                        modifier = Modifier.size(52.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = if (failoverDialogState.isTimeout) "Waktu Generate Habis (30s)" else "Kendala Auto Failover",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+
+                    Text(
+                        text = failoverDialogState.reason,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFFFDE68A),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 18.sp
+                        ),
+                        modifier = Modifier
+                            .background(Color(0x33000000), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                            .fillMaxWidth()
+                    )
+
+                    Text(
+                        text = "Terjadi kendala pada proses generate metadata. Ingin melanjutkan generate ulang (Auto Failover) atau batalkan?",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color(0xFFCBD5E1),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 18.sp
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Tombol Batal: Jika Batal maka tidak Generate ulang
+                        OutlinedButton(
+                            onClick = { viewModel.dismissFailoverDialog() },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, Color(0xFF64748B)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFF94A3B8)
+                            )
+                        ) {
+                            Text(
+                                text = "Batal",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        }
+
+                        // Tombol Lanjutkan: Jika Lanjut maka generate ulang
+                        Button(
+                            onClick = { viewModel.continueFailoverAndRetry() },
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ElectricBlue,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                text = "Lanjutkan",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

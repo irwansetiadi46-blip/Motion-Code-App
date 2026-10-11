@@ -15,12 +15,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
+class GeminiMetadataException(
+    val reason: String,
+    val isTimeout: Boolean = false
+) : Exception(reason)
+
 class GeminiMetadataService {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(45, TimeUnit.SECONDS)
-        .readTimeout(45, TimeUnit.SECONDS)
-        .writeTimeout(45, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(30, TimeUnit.SECONDS)
         .build()
 
     companion object {
@@ -51,6 +57,15 @@ class GeminiMetadataService {
         }
     }
 
+    suspend fun generateMetadataForApiKey(
+        apiKey: String,
+        codeSnippet: String,
+        selectedModel: String = MODEL_3_1_FLASH_LITE,
+        presetName: String = "Code Motion Animation"
+    ): VideoMetadata = withContext(Dispatchers.IO) {
+        executeGeminiCall(apiKey, codeSnippet, selectedModel, presetName)
+    }
+
     suspend fun generateMetadataWithFailover(
         codeSnippet: String,
         selectedModel: String = MODEL_3_1_FLASH_LITE,
@@ -62,35 +77,15 @@ class GeminiMetadataService {
         if (keys.isEmpty()) {
             val buildKey = try { BuildConfig.GEMINI_API_KEY } catch (_: Throwable) { "" }
             if (buildKey.isNotBlank() && buildKey != "your_api_key_here" && buildKey != "your_gemini_api_key_here") {
-                val result = executeGeminiCall(buildKey, codeSnippet, selectedModel, presetName)
-                if (result != null) return@withContext result
+                try {
+                    return@withContext executeGeminiCall(buildKey, codeSnippet, selectedModel, presetName)
+                } catch (_: Exception) {}
             }
             return@withContext generateCodeAwareMetadata(codeSnippet, presetName)
         }
 
-        val maxAttempts = keys.size
-        var attempts = 0
-        while (attempts < maxAttempts) {
-            val currentKey = repository.getActiveApiKey()
-            if (currentKey.isNullOrBlank()) break
-
-            val result = executeGeminiCall(currentKey, codeSnippet, selectedModel, presetName)
-            if (result != null) {
-                return@withContext result
-            }
-
-            // Error occurred with currentKey, attempt failover to next key
-            val oldMasked = maskKey(currentKey)
-            val rotation = repository.rotateToNextApiKey()
-            if (rotation != null) {
-                val newMasked = maskKey(rotation.second)
-                onFailover?.invoke(oldMasked, newMasked)
-            }
-            attempts++
-        }
-
-        // All keys exhausted, generate high-fidelity code-aware metadata
-        generateCodeAwareMetadata(codeSnippet, presetName)
+        val currentKey = repository.getActiveApiKey() ?: keys.first()
+        executeGeminiCall(currentKey, codeSnippet, selectedModel, presetName)
     }
 
     private fun executeGeminiCall(
@@ -98,8 +93,10 @@ class GeminiMetadataService {
         codeSnippet: String,
         selectedModel: String,
         presetName: String
-    ): VideoMetadata? {
+    ): VideoMetadata {
         val candidateModelIds = getModelCandidateIds(selectedModel)
+        var lastErrorMessage: String? = null
+        var isTimeoutDetected = false
 
         for (modelId in candidateModelIds) {
             try {
@@ -179,11 +176,24 @@ class GeminiMetadataService {
                 val response = client.newCall(request).execute()
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string() ?: ""
-                    Log.w("GeminiMetadataService", "Model $modelId failed HTTP ${response.code}: $errBody")
+                    val errDetail = try {
+                        val json = JSONObject(errBody)
+                        val errObj = json.optJSONObject("error")
+                        errObj?.optString("message") ?: "HTTP ${response.code}"
+                    } catch (_: Exception) {
+                        "HTTP ${response.code}: $errBody"
+                    }
+                    Log.w("GeminiMetadataService", "Model $modelId failed HTTP ${response.code}: $errDetail")
+                    lastErrorMessage = "API Error ($modelId): $errDetail"
                     continue // try next candidate model id
                 }
 
-                val responseBodyString = response.body?.string() ?: continue
+                val responseBodyString = response.body?.string()
+                if (responseBodyString.isNullOrBlank()) {
+                    lastErrorMessage = "Model $modelId: Respons kosong dari server"
+                    continue
+                }
+
                 val jsonRoot = JSONObject(responseBodyString)
                 val candidates = jsonRoot.optJSONArray("candidates")
                 val firstCandidate = candidates?.optJSONObject(0)
@@ -191,7 +201,10 @@ class GeminiMetadataService {
                 val parts = content?.optJSONArray("parts")
                 val rawText = parts?.optJSONObject(0)?.optString("text") ?: ""
 
-                if (rawText.isBlank()) continue
+                if (rawText.isBlank()) {
+                    lastErrorMessage = "Teks respons kosong dari Gemini ($modelId)"
+                    continue
+                }
 
                 val cleanJsonString = rawText
                     .removePrefix("```json")
@@ -247,10 +260,20 @@ class GeminiMetadataService {
                     keywords = finalKeywords
                 )
             } catch (e: Exception) {
+                if (e is java.net.SocketTimeoutException || e is java.io.InterruptedIOException) {
+                    isTimeoutDetected = true
+                    lastErrorMessage = "Batas waktu koneksi 30 detik terlampaui saat memanggil model $modelId"
+                } else {
+                    lastErrorMessage = "Error memanggil $modelId: ${e.message}"
+                }
                 Log.e("GeminiMetadataService", "Error calling $modelId: ${e.message}")
             }
         }
-        return null
+
+        throw GeminiMetadataException(
+            reason = lastErrorMessage ?: "Gagal mendapatkan respon dari API Gemini.",
+            isTimeout = isTimeoutDetected
+        )
     }
 
     fun maskKey(key: String): String {

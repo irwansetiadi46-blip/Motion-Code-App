@@ -265,10 +265,11 @@ fun MetadataScreen(
                     )
 
                     Text(
-                        text = "Ketika Anda menekan Render Mp4 di tab Export, proses render dan generate metadata berjalan paralel. Metadata otomatis tersimpan dan ditampilkan di sini.",
+                        text = "Tekan tombol GENERATE di atas File Name pada tab Export untuk membuat metadata berdasarkan kode di terminal. Metadata yang dihasilkan akan otomatis tersimpan dan ditampilkan di sini.",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color(0xFF94A3B8),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 18.sp
                         )
                     )
                 }

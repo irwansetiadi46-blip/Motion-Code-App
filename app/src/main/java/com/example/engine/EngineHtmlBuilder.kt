@@ -207,7 +207,12 @@ const HARNESS_SCRIPT_TEXT = `
         options = options || {};
         options.preserveDrawingBuffer = true;
       }
-      return origGetContext.call(this, type, options);
+      try {
+        return origGetContext.call(this, type, options);
+      } catch (err) {
+        console.warn('WebGL context creation caught:', err);
+        return null;
+      }
     };
   } catch(e) {}
 
@@ -644,11 +649,11 @@ window.startVideoRender = async function() {
       encoder.encode(frame, { keyFrame: (i % keyFrameInterval === 0) });
       frame.close();
 
-      if (i % 3 === 0 || i === totalFrames - 1) {
+      if (i % 2 === 0 || i === totalFrames - 1) {
         const prog = (i + 1) / totalFrames;
         const pct = Math.round(prog * 100);
         postProgress(i + 1, totalFrames, prog, "Merender frame " + (i + 1) + "/" + totalFrames + " (" + pct + "%)");
-        await new Promise(r => setTimeout(r, 0));
+        await new Promise(r => setTimeout(r, 4));
       }
 
       // Keep encode queue bounded

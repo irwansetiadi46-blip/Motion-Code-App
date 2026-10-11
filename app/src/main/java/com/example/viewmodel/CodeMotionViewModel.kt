@@ -24,15 +24,19 @@ import com.example.model.SavedVideo
 import com.example.model.VideoMetadata
 import com.example.model.VideoPreset
 import com.example.model.VideoResolution
+import com.example.network.GeminiMetadataException
 import com.example.network.GeminiMetadataService
 import com.example.util.CsvExporter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.io.File
 
 enum class NavigationTab(val label: String) {
@@ -176,8 +180,19 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     )
     val currentMetadata: StateFlow<VideoMetadata> = _currentMetadata.asStateFlow()
 
+    data class FailoverDialogState(
+        val isOpen: Boolean = false,
+        val reason: String = "",
+        val isTimeout: Boolean = false
+    )
+
     private val _isGeneratingMetadata = MutableStateFlow(false)
     val isGeneratingMetadata: StateFlow<Boolean> = _isGeneratingMetadata.asStateFlow()
+
+    private val _failoverDialogState = MutableStateFlow(FailoverDialogState())
+    val failoverDialogState: StateFlow<FailoverDialogState> = _failoverDialogState.asStateFlow()
+
+    private var metadataGenerationJob: Job? = null
 
     private val _videoMetadataMap = MutableStateFlow<Map<String, VideoMetadata>>(emptyMap())
     val videoMetadataMap: StateFlow<Map<String, VideoMetadata>> = _videoMetadataMap.asStateFlow()
@@ -398,70 +413,127 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun startRenderAndGenerateMetadata() {
+    fun startRenderVideo() {
         val realtimeCode = _userCode.value.trim()
         if (realtimeCode.isBlank()) {
-            showCustomToast("No Video to Generate ")
+            showCustomToast("No Code or Video")
             return
         }
-
-        // 1. Mulai render MP4
         triggerRender()
-
-        // 2. Cek apakah ada API key yang diinput. Jika 0 Api, TIDAK melakukan generate metadata paralel,
-        // hanya render MP4 saja seperti biasa tanpa peringatan dan notiv apapun.
-        val keys = apiKeyRepository.getApiKeys()
-        if (keys.isNotEmpty()) {
-            generateMetadataForCurrentAnimation(isParallelWithRender = true)
-        }
     }
 
-    fun generateMetadataForCurrentAnimation(isParallelWithRender: Boolean = false) {
+    fun startRenderAndGenerateMetadata() {
+        startRenderVideo()
+    }
+
+    fun cancelMetadataGeneration() {
+        metadataGenerationJob?.cancel()
+        metadataGenerationJob = null
+        _isGeneratingMetadata.value = false
+        showCustomToast("Generate metadata dibatalkan")
+    }
+
+    fun dismissFailoverDialog() {
+        _failoverDialogState.value = FailoverDialogState(isOpen = false)
+        showCustomToast("Generate metadata dibatalkan")
+    }
+
+    fun continueFailoverAndRetry() {
+        _failoverDialogState.value = FailoverDialogState(isOpen = false)
+        val keys = apiKeyRepository.getApiKeys()
+        if (keys.size > 1) {
+            val rotation = apiKeyRepository.rotateToNextApiKey()
+            loadApiKeys()
+            if (rotation != null) {
+                showCustomToast("Auto Failover: Beralih ke API Key ${rotation.first + 1}")
+            }
+        } else {
+            showCustomToast("Mencoba generate ulang...")
+        }
+        generateMetadataFromEditor()
+    }
+
+    fun generateMetadataFromEditor() {
         val realtimeCode = _userCode.value.trim()
         if (realtimeCode.isBlank()) {
-            if (!isParallelWithRender) {
-                showCustomToast("No Video to Generate ")
-            }
+            showCustomToast("No Code or Video")
             return
         }
 
-        viewModelScope.launch {
-            val keys = apiKeyRepository.getApiKeys()
-            if (keys.isEmpty()) {
-                // Jika 0 Api saat proses paralel, tidak menampilkan peringatan/notif apapun
-                if (!isParallelWithRender) {
-                    showCustomToast("Tambahkan API Key di Tab Engine terlebih dahulu")
-                }
-                return@launch
-            }
+        if (_isGeneratingMetadata.value) {
+            return
+        }
 
+        val keys = apiKeyRepository.getApiKeys()
+        if (keys.isEmpty()) {
+            showCustomToast("Tambahkan API Key di Tab Engine terlebih dahulu")
+            return
+        }
+
+        metadataGenerationJob?.cancel()
+        metadataGenerationJob = viewModelScope.launch {
             _isGeneratingMetadata.value = true
+            _failoverDialogState.value = FailoverDialogState(isOpen = false)
             try {
-                val generated = metadataService.generateMetadataWithFailover(
-                    codeSnippet = realtimeCode,
-                    selectedModel = _selectedGeminiModel.value,
-                    presetName = _selectedPreset.value.name,
-                    repository = apiKeyRepository,
-                    onFailover = { oldKeyMasked, newKeyMasked ->
-                        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
-                            loadApiKeys()
-                            showCustomToast("Failover: Menggunakan API key cadangan")
-                        }
-                    }
-                )
+                val currentKey = apiKeyRepository.getActiveApiKey() ?: keys.first()
+
+                // Batas waktu generate 30 detik
+                val generated = withTimeout(30_000L) {
+                    metadataService.generateMetadataForApiKey(
+                        apiKey = currentKey,
+                        codeSnippet = realtimeCode,
+                        selectedModel = _selectedGeminiModel.value,
+                        presetName = _selectedPreset.value.name
+                    )
+                }
+
                 _currentMetadata.value = generated
                 metadataRepository.addMetadata(generated)
                 loadSavedMetadata()
                 loadApiKeys()
                 showCustomToast("Metadata berhasil di-generate!")
-            } catch (e: Exception) {
-                if (!isParallelWithRender) {
-                    showCustomToast("Gagal generate metadata: ${e.message}")
+            } catch (e: TimeoutCancellationException) {
+                // Melewati batas waktu 30 detik -> tampilkan popup dialog Batal / Lanjutkan
+                _failoverDialogState.value = FailoverDialogState(
+                    isOpen = true,
+                    reason = "Proses generate metadata melewati batas waktu 30 detik.",
+                    isTimeout = true
+                )
+            } catch (e: CancellationException) {
+                // Dibatalkan secara manual oleh user saat menekan tombol Cancel
+                showCustomToast("Generate metadata dibatalkan")
+            } catch (e: GeminiMetadataException) {
+                val reasonMsg = if (e.isTimeout) {
+                    "Proses generate metadata melewati batas waktu 30 detik."
+                } else {
+                    e.reason
                 }
+                _failoverDialogState.value = FailoverDialogState(
+                    isOpen = true,
+                    reason = reasonMsg,
+                    isTimeout = e.isTimeout
+                )
+            } catch (e: Exception) {
+                val isTimeout = e is java.net.SocketTimeoutException || e.message?.contains("timeout", ignoreCase = true) == true
+                val reasonMsg = if (isTimeout) {
+                    "Proses generate metadata melewati batas waktu 30 detik."
+                } else {
+                    e.message ?: "Terjadi error pada API atau koneksi internet"
+                }
+                _failoverDialogState.value = FailoverDialogState(
+                    isOpen = true,
+                    reason = reasonMsg,
+                    isTimeout = isTimeout
+                )
             } finally {
                 _isGeneratingMetadata.value = false
+                metadataGenerationJob = null
             }
         }
+    }
+
+    fun generateMetadataForCurrentAnimation(isParallelWithRender: Boolean = false) {
+        generateMetadataFromEditor()
     }
 
     fun downloadMicrostockCsv(
