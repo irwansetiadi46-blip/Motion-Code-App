@@ -103,6 +103,10 @@ fun ExportScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        val isRendering = renderState is RenderState.Rendering || renderState is RenderState.Preparing || renderState is RenderState.Finalizing
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val engineWebView = remember { viewModel.getOrCreateEngineWebView(context) }
+
         // Section: Live Viewport Preview
         LiveAnimationViewport(
             userCode = userCode,
@@ -115,11 +119,12 @@ fun ExportScreen(
             onWebViewDisposed = {
                 viewModel.bindWebView(null)
             },
-            title = "REAL-TIME ANIMATION VIEWPORT"
+            title = "REAL-TIME ANIMATION VIEWPORT",
+            isRendering = isRendering,
+            engineWebView = engineWebView
         )
 
         // 3. Tombol Render Mp4 di tab export persis di bawah Viewport di atas Container Configuration
-        val isRendering = renderState is RenderState.Rendering || renderState is RenderState.Preparing || renderState is RenderState.Finalizing
         Button(
             onClick = {
                 if (isRendering) {

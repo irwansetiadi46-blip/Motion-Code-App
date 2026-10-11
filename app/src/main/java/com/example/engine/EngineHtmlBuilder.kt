@@ -625,6 +625,22 @@ window.startVideoRender = async function() {
     encoder.configure(config);
     window.__CURRENT_ENCODER__ = encoder;
 
+    function yieldMacroTask() {
+      return new Promise(function(resolve) {
+        if (typeof MessageChannel !== 'undefined') {
+          var ch = new MessageChannel();
+          ch.port1.onmessage = function() {
+            try { ch.port1.close(); } catch(e) {}
+            try { ch.port2.close(); } catch(e) {}
+            resolve();
+          };
+          ch.port2.postMessage(null);
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
+    }
+
     const harness = iwin.__HARNESS__;
     const dt = 1000 / FPS;
     harness.step(0);
@@ -653,7 +669,7 @@ window.startVideoRender = async function() {
         const prog = (i + 1) / totalFrames;
         const pct = Math.round(prog * 100);
         postProgress(i + 1, totalFrames, prog, "Merender frame " + (i + 1) + "/" + totalFrames + " (" + pct + "%)");
-        await new Promise(r => setTimeout(r, 4));
+        await yieldMacroTask();
       }
 
       // Keep encode queue bounded
@@ -664,7 +680,7 @@ window.startVideoRender = async function() {
           window.__CURRENT_ENCODER__ = null;
           return;
         }
-        await new Promise(r => setTimeout(r, 10));
+        await yieldMacroTask();
         waitCount++;
         if (encoderError) throw encoderError;
       }
@@ -708,7 +724,7 @@ window.startVideoRender = async function() {
         window.AndroidBridge.onChunkStream(b64);
       }
       if (offset % (CHUNK_SIZE * 4) === 0) {
-        await new Promise(r => setTimeout(r, 0));
+        await yieldMacroTask();
       }
     }
 

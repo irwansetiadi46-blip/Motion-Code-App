@@ -223,11 +223,69 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
 
     val bridge = WebCodecsBridge(application, viewModelScope)
 
+    private var _engineWebView: WebView? = null
+    val engineWebView: WebView? get() = _engineWebView
+
     private var _boundWebView: WebView? = null
-    val boundWebView: WebView? get() = _boundWebView
+    val boundWebView: WebView? get() = _boundWebView ?: _engineWebView
+
+    fun getOrCreateEngineWebView(context: android.content.Context): WebView {
+        _engineWebView?.let { return it }
+        val wv = WebView(context.applicationContext).apply {
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                mediaPlaybackRequiresUserGesture = false
+                allowFileAccess = true
+                allowContentAccess = true
+                cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                databaseEnabled = true
+            }
+            setBackgroundColor(android.graphics.Color.BLACK)
+            webChromeClient = android.webkit.WebChromeClient()
+            webViewClient = object : android.webkit.WebViewClient() {
+                override fun onRenderProcessGone(
+                    view: WebView?,
+                    detail: android.webkit.RenderProcessGoneDetail?
+                ): Boolean {
+                    android.util.Log.w("CodeMotionViewModel", "Render process gone. Resetting engine...")
+                    _engineWebView = null
+                    _boundWebView = null
+                    return true
+                }
+            }
+            addJavascriptInterface(bridge, "AndroidBridge")
+        }
+        _engineWebView = wv
+        _boundWebView = wv
+        return wv
+    }
+
+    fun isCurrentlyRendering(): Boolean {
+        val s = _renderState.value
+        return s is RenderState.Rendering || s is RenderState.Preparing || s is RenderState.Finalizing
+    }
 
     fun bindWebView(wv: WebView?) {
-        _boundWebView = wv
+        if (wv != null) {
+            _boundWebView = wv
+            _engineWebView = wv
+        } else if (!isCurrentlyRendering()) {
+            _boundWebView = null
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            _engineWebView?.destroy()
+            _engineWebView = null
+            _boundWebView = null
+        } catch (_: Exception) {}
     }
 
     private var codeDebounceJob: Job? = null
@@ -368,11 +426,12 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun triggerRender() {
-        val wv = _boundWebView
+        val wv = _boundWebView ?: _engineWebView
         if (wv == null) {
             _renderState.value = RenderState.Error("Stage animasi belum siap. Buka tab Studio terlebih dahulu.")
             return
         }
+        _boundWebView = wv
         _renderState.value = RenderState.Preparing("Menyiapkan encoder...")
         try {
             wv.evaluateJavascript(
@@ -385,7 +444,7 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun cancelRender() {
-        val wv = _boundWebView
+        val wv = _boundWebView ?: _engineWebView
         try {
             wv?.evaluateJavascript("if (window.cancelVideoRender) { window.cancelVideoRender(); }", null)
         } catch (e: Exception) {

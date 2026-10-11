@@ -119,6 +119,9 @@ fun StudioScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val engineWebView = remember { viewModel.getOrCreateEngineWebView(context) }
+
         // Live Animation Stage (Real-time Viewport from user's code)
         LiveAnimationViewport(
             userCode = userCode,
@@ -129,7 +132,9 @@ fun StudioScreen(
             onWebViewDisposed = {
                 viewModel.bindWebView(null)
             },
-            title = "VIEWPORT ANIMASI"
+            title = "VIEWPORT ANIMASI",
+            isRendering = isRendering,
+            engineWebView = engineWebView
         )
 
         // Render Action & Export Settings Controls

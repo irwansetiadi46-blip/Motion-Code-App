@@ -62,9 +62,9 @@ fun MicrostockExportDialog(
     onDismiss: () -> Unit,
     onSave: (selectedPlatforms: Set<MicrostockPlatform>) -> Unit
 ) {
-    // Default: Adobe Stock & Shutterstock tercentang
+    // Default: Belum ada yang terpilih sama sekali saat dialog pop-up muncul
     var selectedPlatforms by remember {
-        mutableStateOf(setOf(MicrostockPlatform.ADOBE_STOCK, MicrostockPlatform.SHUTTERSTOCK))
+        mutableStateOf(emptySet<MicrostockPlatform>())
     }
 
     val isAllSelected = selectedPlatforms.size == MicrostockPlatform.entries.size
@@ -296,17 +296,19 @@ private fun MicrostockSelectionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val selectedBlue = Color(0xFF0284C7)
+
     Card(
         modifier = modifier
             .clickable { onClick() }
             .height(115.dp),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) Color(0x331E293B).let { accentColor.copy(alpha = 0.12f) } else Color(0x440F172A)
+            containerColor = if (isSelected) Color(0x260284C7) else Color(0x440F172A)
         ),
         border = BorderStroke(
-            1.5.dp,
-            if (isSelected) accentColor else Color(0x33334155)
+            1.8.dp,
+            if (isSelected) selectedBlue else Color(0x33334155)
         )
     ) {
         Column(
@@ -337,8 +339,8 @@ private fun MicrostockSelectionCard(
 
                 Surface(
                     shape = CircleShape,
-                    color = if (isSelected) accentColor else Color.Transparent,
-                    border = BorderStroke(1.5.dp, if (isSelected) accentColor else Color(0xFF64748B)),
+                    color = if (isSelected) selectedBlue else Color.Transparent,
+                    border = BorderStroke(1.5.dp, if (isSelected) selectedBlue else Color(0xFF64748B)),
                     modifier = Modifier.size(18.dp)
                 ) {
                     if (isSelected) {

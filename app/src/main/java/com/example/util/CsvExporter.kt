@@ -84,6 +84,72 @@ object CsvExporter {
     }
 
     /**
+     * Helper terpadu untuk menyimpan tepat 1 file CSV ke folder Download/Code Motion Video
+     * tanpa duplikasi file fisik maupun duplikasi MediaStore.
+     */
+    private fun writeSingleCsvToDownloads(
+        context: Context,
+        csvFilename: String,
+        csvContent: String
+    ): Uri? {
+        val resolver = context.contentResolver
+        val folderRelativePath = "${Environment.DIRECTORY_DOWNLOADS}/Code Motion Video"
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val collectionUri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                try {
+                    val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+                    val selectionArgs = arrayOf(csvFilename, "$folderRelativePath%")
+                    resolver.delete(collectionUri, selection, selectionArgs)
+                } catch (_: Exception) {}
+
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, csvFilename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                    put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, folderRelativePath)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+
+                val targetUri = resolver.insert(collectionUri, contentValues) ?: return null
+
+                resolver.openOutputStream(targetUri)?.use { outputStream: OutputStream ->
+                    outputStream.write(csvContent.toByteArray())
+                    outputStream.flush()
+                }
+
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(targetUri, contentValues, null, null)
+
+                targetUri
+            } else {
+                val publicDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "Code Motion Video"
+                )
+                if (!publicDir.exists()) publicDir.mkdirs()
+                val targetFile = File(publicDir, csvFilename)
+                if (targetFile.exists()) targetFile.delete()
+
+                FileOutputStream(targetFile).use { it.write(csvContent.toByteArray()) }
+
+                android.media.MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(targetFile.absolutePath),
+                    arrayOf("text/csv"),
+                    null
+                )
+                Uri.fromFile(targetFile)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
      * Menyimpan CSV ke Download/Code Motion Video untuk satu platform microstock
      */
     suspend fun saveMicrostockCsvToDownloads(
@@ -103,55 +169,7 @@ object CsvExporter {
         val cleanBaseName = baseName.removeSuffix(".mp4").replace(" ", "_")
         val csvFilename = "${platform.filePrefix}_${cleanBaseName}.csv"
 
-        try {
-            val resolver = context.contentResolver
-            val folderRelativePath = "${Environment.DIRECTORY_DOWNLOADS}/Code Motion Video"
-
-            // Physical fallback
-            try {
-                val publicDir = File(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "Code Motion Video"
-                )
-                if (!publicDir.exists()) publicDir.mkdirs()
-                val fallbackFile = File(publicDir, csvFilename)
-                FileOutputStream(fallbackFile).use { it.write(csvContent.toByteArray()) }
-            } catch (_: Exception) {}
-
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, csvFilename)
-                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
-                put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, folderRelativePath)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-            }
-
-            val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Files.getContentUri("external")
-            }
-
-            val targetUri = resolver.insert(collectionUri, contentValues) ?: return@withContext null
-
-            resolver.openOutputStream(targetUri)?.use { outputStream: OutputStream ->
-                outputStream.write(csvContent.toByteArray())
-                outputStream.flush()
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                contentValues.clear()
-                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                resolver.update(targetUri, contentValues, null, null)
-            }
-
-            targetUri
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+        writeSingleCsvToDownloads(context, csvFilename, csvContent)
     }
 
     suspend fun saveCsvToDownloads(
@@ -167,54 +185,7 @@ object CsvExporter {
         val csvFilename = "${baseName}_metadata.csv"
         val csvContent = metadata.toFullCsv(if (metadata.filename.isNotBlank()) metadata.filename else videoFilename)
 
-        try {
-            val resolver = context.contentResolver
-            val folderRelativePath = "${Environment.DIRECTORY_DOWNLOADS}/Code Motion Video"
-
-            try {
-                val publicDir = File(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "Code Motion Video"
-                )
-                if (!publicDir.exists()) publicDir.mkdirs()
-                val fallbackFile = File(publicDir, csvFilename)
-                FileOutputStream(fallbackFile).use { it.write(csvContent.toByteArray()) }
-            } catch (_: Exception) {}
-
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, csvFilename)
-                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
-                put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, folderRelativePath)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-            }
-
-            val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Files.getContentUri("external")
-            }
-
-            val targetUri = resolver.insert(collectionUri, contentValues) ?: return@withContext null
-
-            resolver.openOutputStream(targetUri)?.use { outputStream: OutputStream ->
-                outputStream.write(csvContent.toByteArray())
-                outputStream.flush()
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                contentValues.clear()
-                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                resolver.update(targetUri, contentValues, null, null)
-            }
-
-            targetUri
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+        writeSingleCsvToDownloads(context, csvFilename, csvContent)
     }
 
     suspend fun saveAllMetadataCsvToDownloads(
@@ -228,54 +199,7 @@ object CsvExporter {
         val rows = metadataList.map { it.toCsvRow() }
         val csvContent = (listOf(header) + rows).joinToString("\n")
 
-        try {
-            val resolver = context.contentResolver
-            val folderRelativePath = "${Environment.DIRECTORY_DOWNLOADS}/Code Motion Video"
-
-            try {
-                val publicDir = File(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "Code Motion Video"
-                )
-                if (!publicDir.exists()) publicDir.mkdirs()
-                val fallbackFile = File(publicDir, exportFilename)
-                FileOutputStream(fallbackFile).use { it.write(csvContent.toByteArray()) }
-            } catch (_: Exception) {}
-
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, exportFilename)
-                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
-                put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, folderRelativePath)
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-            }
-
-            val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Files.getContentUri("external")
-            }
-
-            val targetUri = resolver.insert(collectionUri, contentValues) ?: return@withContext null
-
-            resolver.openOutputStream(targetUri)?.use { outputStream: OutputStream ->
-                outputStream.write(csvContent.toByteArray())
-                outputStream.flush()
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                contentValues.clear()
-                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                resolver.update(targetUri, contentValues, null, null)
-            }
-
-            targetUri
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+        writeSingleCsvToDownloads(context, exportFilename, csvContent)
     }
 
     fun copyToClipboard(context: Context, label: String, text: String) {

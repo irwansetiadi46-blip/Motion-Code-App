@@ -94,6 +94,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        try {
+            viewModel.engineWebView?.resumeTimers()
+        } catch (_: Exception) {}
+    }
 }
 
 @Composable

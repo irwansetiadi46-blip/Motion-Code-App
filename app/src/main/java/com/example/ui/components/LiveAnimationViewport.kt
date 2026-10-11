@@ -65,7 +65,9 @@ fun LiveAnimationViewport(
     onWebViewReady: (WebView) -> Unit,
     onWebViewDisposed: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
-    title: String = "REAL-TIME STAGE"
+    title: String = "REAL-TIME STAGE",
+    isRendering: Boolean = false,
+    engineWebView: WebView? = null
 ) {
     val context = LocalContext.current
     val aspect = renderConfig.resolution.aspectRatioFloat
@@ -73,8 +75,8 @@ fun LiveAnimationViewport(
     var webViewKey by remember { mutableIntStateOf(0) }
 
     key(webViewKey) {
-        val webView = remember(webViewKey) {
-            WebView(context).apply {
+        val webView = remember(webViewKey, engineWebView) {
+            engineWebView ?: WebView(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
@@ -96,7 +98,7 @@ fun LiveAnimationViewport(
                     ): Boolean {
                         android.util.Log.w(
                             "LiveAnimationViewport",
-                            "Chromium renderer process gone detected (didCrash=${detail?.didCrash()}). Recovering automatically..."
+                            "Chromium renderer process gone detected. Recovering automatically..."
                         )
                         try {
                             onWebViewDisposed?.invoke()
@@ -110,7 +112,6 @@ fun LiveAnimationViewport(
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
-                        // Re-create a fresh, healthy WebView instance
                         webViewKey++
                         return true
                     }
@@ -124,19 +125,23 @@ fun LiveAnimationViewport(
         }
 
         // Full load whenever resolution, fps, duration, or bitrate changes
+        // PENTING: Jangan reload HTML saat sedang proses render aktif!
         LaunchedEffect(
             renderConfig.resolution,
             renderConfig.fps,
             renderConfig.durationSeconds,
             renderConfig.quality.bitrateBps
         ) {
-            val html = EngineHtmlBuilder.buildHtml(context, userCode, renderConfig)
-            webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
+            if (!isRendering) {
+                val html = EngineHtmlBuilder.buildHtml(context, userCode, renderConfig)
+                webView.loadDataWithBaseURL("https://local.codemotion/", html, "text/html", "UTF-8", null)
+            }
         }
 
         // Fast, flicker-free live code reload whenever reloadTrigger updates
+        // PENTING: Jangan reload saat sedang proses render aktif!
         LaunchedEffect(reloadTrigger) {
-            if (reloadTrigger > 0L) {
+            if (reloadTrigger > 0L && !isRendering) {
                 try {
                     val quoted = JSONObject.quote(userCode)
                     webView.evaluateJavascript(
@@ -152,14 +157,19 @@ fun LiveAnimationViewport(
         DisposableEffect(webView) {
             onDispose {
                 try {
-                    onWebViewDisposed?.invoke()
+                    // Lepaskan dari ViewGroup container tanpa mematikan WebView agar proses render tetap berjalan
                     (webView.parent as? ViewGroup)?.removeView(webView)
-                    webView.stopLoading()
-                    webView.webChromeClient = null
-                    webView.webViewClient = WebViewClient()
-                    webView.removeJavascriptInterface("AndroidBridge")
-                    webView.removeAllViews()
-                    webView.destroy()
+                    if (engineWebView == null) {
+                        onWebViewDisposed?.invoke()
+                        webView.stopLoading()
+                        webView.webChromeClient = null
+                        webView.webViewClient = WebViewClient()
+                        webView.removeJavascriptInterface("AndroidBridge")
+                        webView.removeAllViews()
+                        webView.destroy()
+                    } else if (!isRendering) {
+                        onWebViewDisposed?.invoke()
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
