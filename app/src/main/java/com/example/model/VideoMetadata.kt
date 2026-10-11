@@ -7,6 +7,7 @@ data class VideoMetadata(
     val title: String = "",
     val description: String = "",
     val keywords: String = "",
+    val categories: String = "",
     val id: String = UUID.randomUUID().toString(),
     val createdAtMillis: Long = System.currentTimeMillis()
 ) {
@@ -32,7 +33,7 @@ data class VideoMetadata(
     /**
      * Formats metadata as a standard CSV string row for microstock platforms.
      */
-    fun toCsvRow(defaultFilename: String = "video.mp4"): String {
+    fun toCsvRow(defaultFilename: String = "Vid-WM.mp4"): String {
         val chosenFilename = if (filename.isNotBlank()) {
             if (!filename.endsWith(".mp4", ignoreCase = true)) "$filename.mp4" else filename
         } else {
@@ -45,7 +46,7 @@ data class VideoMetadata(
         return "$safeFilename,$safeTitle,$safeDesc,$safeKeywords"
     }
 
-    fun toFullCsv(defaultFilename: String = "video.mp4"): String {
+    fun toFullCsv(defaultFilename: String = "Vid-WM.mp4"): String {
         val header = "Filename,Title,Description,Keywords"
         return "$header\n${toCsvRow(defaultFilename)}"
     }

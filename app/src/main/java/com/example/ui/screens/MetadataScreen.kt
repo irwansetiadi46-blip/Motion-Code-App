@@ -701,6 +701,60 @@ fun MetadataRowAccordionItem(
                         )
                     }
 
+                    // Kolom Category (Shutterstock)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Category (Shutterstock)",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFE2E8F0)
+                                )
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                IconButton(
+                                    onClick = {
+                                        CsvExporter.copyToClipboard(context, "Category", item.categories)
+                                    },
+                                    modifier = Modifier.size(26.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = "Salin Category",
+                                        tint = SkyGlow,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = item.categories,
+                            onValueChange = { onUpdate(item.copy(categories = it)) },
+                            placeholder = {
+                                Text("e.g. Technology, Backgrounds/Textures", color = Color(0xFF64748B), fontSize = 13.sp)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color(0x66080E24),
+                                unfocusedContainerColor = Color(0x44080E24),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color(0xFFE2E8F0),
+                                focusedBorderColor = SkyGlow,
+                                unfocusedBorderColor = DarkBorder.copy(alpha = 0.7f)
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+                    }
+
                     // Kolom Keywords
                     val currentKeywordsList = remember(item.keywords) { item.parseKeywordsList() }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -688,7 +688,7 @@ window.startVideoRender = async function() {
 
     const uint8 = new Uint8Array(buffer);
     const totalBytes = uint8.byteLength;
-    const filename = "codemotion_" + TARGET_W + "x" + TARGET_H + "_" + Date.now();
+    const filename = "Vid-WM_" + TARGET_W + "x" + TARGET_H + "_" + Date.now();
 
     if (window.AndroidBridge && window.AndroidBridge.onStartStream) {
       window.AndroidBridge.onStartStream(filename, TARGET_W, TARGET_H, DURATION, totalBytes);

@@ -2,6 +2,7 @@ package com.example
 
 import com.example.model.VideoMetadata
 import com.example.network.GeminiMetadataService
+import com.example.util.CsvExporter
 import com.example.util.MetadataValidator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -126,5 +127,46 @@ class MetadataValidatorTest {
         assertTrue(csv.contains("Filename,Title,Description,Keywords"))
         assertTrue(csv.contains("\"test.mp4\""))
         assertTrue(csv.contains("\"Digital \"\"Matrix\"\" Animation\""))
+    }
+
+    @Test
+    fun testShutterstockCsvExactFourColumns() {
+        val meta = VideoMetadata(
+            filename = "Cyber Neon Wave Loop",
+            title = "Cyber Neon Wave Motion Animation",
+            description = "Glowing cyberpunk waves oscillating smoothly over dark background.",
+            keywords = "cyberpunk, neon, wave, loop, motion",
+            categories = "Technology, Backgrounds/Textures"
+        )
+
+        val csv = CsvExporter.buildShutterstockCsv(listOf(meta))
+        val lines = csv.trim().split("\n")
+        assertEquals(2, lines.size)
+
+        // Verifikasi Header: tepat 4 kolom
+        assertEquals("Filename,Description,Keywords,Categories", lines[0])
+
+        // Verifikasi Baris Data
+        val expectedRow = "\"Cyber Neon Wave Loop.mp4\",\"Glowing cyberpunk waves oscillating smoothly over dark background.\",\"cyberpunk, neon, wave, loop, motion\",\"Technology, Backgrounds/Textures\""
+        assertEquals(expectedRow, lines[1])
+    }
+
+    @Test
+    fun testShutterstockCsvBlankCategoryAndDefaultVidWm() {
+        val meta = VideoMetadata(
+            filename = "",
+            title = "Untitled Code Animation",
+            description = "Clean generative coding animation loop.",
+            keywords = "coding, creative, loop",
+            categories = ""
+        )
+
+        val csv = CsvExporter.buildShutterstockCsv(listOf(meta))
+        val lines = csv.trim().split("\n")
+        assertEquals(2, lines.size)
+
+        // Filename kosong -> fallback ke Vid-WM.mp4, Categories kosong -> "" (tanpa default kaku)
+        val expectedRow = "\"Vid-WM.mp4\",\"Clean generative coding animation loop.\",\"coding, creative, loop\",\"\""
+        assertEquals(expectedRow, lines[1])
     }
 }

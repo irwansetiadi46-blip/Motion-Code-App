@@ -137,6 +137,10 @@ class GeminiMetadataService {
                        - NO punctuation inside keywords.
                        - Separated ONLY by commas and spaces.
                        - Must include specific keywords representing the visual shapes, colors, animation effects, and commercial stock themes found in the code.
+                    5. "categories":
+                       - One or two categories in English, separated by commas, strictly selected from this official Shutterstock Video Categories list:
+                         Animals/Wildlife, Arts, Backgrounds/Textures, Buildings/Landmarks, Business/Finance, Education, Food and drink, Healthcare/Medical, Holidays, Industrial, Nature, Objects, People, Religion, Science, Signs/Symbols, Sports/Recreation, Technology, Transportation
+                       - Example: "Technology, Backgrounds/Textures" or "Arts, Backgrounds/Textures"
 
                     OUTPUT FORMAT:
                     Return ONLY a valid JSON object without markdown fences:
@@ -144,7 +148,8 @@ class GeminiMetadataService {
                       "filename": "...",
                       "title": "...",
                       "description": "...",
-                      "keywords": "..."
+                      "keywords": "...",
+                      "categories": "..."
                     }
                 """.trimIndent()
 
@@ -217,6 +222,7 @@ class GeminiMetadataService {
                 var title = parsedMeta.optString("title", "").trim()
                 var desc = parsedMeta.optString("description", "").trim()
                 var keywords = parsedMeta.optString("keywords", "").trim()
+                var categories = parsedMeta.optString("categories", "").trim()
 
                 // Enforce max 5 words for filename
                 val filenameWords = (if (rawFilename.isNotBlank()) rawFilename else title)
@@ -257,7 +263,8 @@ class GeminiMetadataService {
                     filename = finalFilename,
                     title = title.ifBlank { "Dynamic Code Motion Programming Visual Animation Background" },
                     description = desc.ifBlank { "Seamless creative coding visual animation loop with programmatic motion graphics." },
-                    keywords = finalKeywords
+                    keywords = finalKeywords,
+                    categories = categories
                 )
             } catch (e: Exception) {
                 if (e is java.net.SocketTimeoutException || e is java.io.InterruptedIOException) {
@@ -359,11 +366,21 @@ class GeminiMetadataService {
             .take(40)
             .joinToString(", ")
 
+        val detectedCategories = when {
+            isMatrix || isCyber -> "Technology, Backgrounds/Textures"
+            isNeural -> "Technology, Science"
+            isWave -> "Science, Backgrounds/Textures"
+            isParticles -> "Arts, Backgrounds/Textures"
+            isGrid -> "Technology, Objects"
+            else -> "Technology, Backgrounds/Textures"
+        }
+
         return VideoMetadata(
             filename = filename,
             title = title,
             description = description,
-            keywords = allKw
+            keywords = allKw,
+            categories = detectedCategories
         )
     }
 

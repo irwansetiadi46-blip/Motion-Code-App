@@ -28,6 +28,7 @@ class MetadataRepository(private val context: Context) {
                         title = obj.optString("title", ""),
                         description = obj.optString("description", ""),
                         keywords = obj.optString("keywords", ""),
+                        categories = obj.optString("categories", ""),
                         id = obj.optString("id", UUID.randomUUID().toString()),
                         createdAtMillis = obj.optLong("createdAtMillis", System.currentTimeMillis())
                     )
@@ -51,6 +52,7 @@ class MetadataRepository(private val context: Context) {
                     put("title", item.title)
                     put("description", item.description)
                     put("keywords", item.keywords)
+                    put("categories", item.categories)
                     put("createdAtMillis", item.createdAtMillis)
                 }
                 jsonArray.put(obj)

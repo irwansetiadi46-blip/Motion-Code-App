@@ -491,6 +491,31 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                 metadataRepository.addMetadata(generated)
                 loadSavedMetadata()
                 loadApiKeys()
+
+                // Auto rename file MP4 menggunakan hasil generate filename metadata
+                val genFilename = generated.filename.trim()
+                if (genFilename.isNotBlank()) {
+                    val targetVideo = _selectedVideoForPlayback.value ?: _lastRenderedVideo.value
+                    if (targetVideo != null && targetVideo.file.exists()) {
+                        val renamedFile = storageManager.renameVideoFile(targetVideo.file, genFilename)
+                        if (renamedFile != null) {
+                            val updatedVideo = targetVideo.copy(
+                                id = renamedFile.nameWithoutExtension,
+                                file = renamedFile,
+                                title = renamedFile.name
+                            )
+                            _selectedVideoForPlayback.value = updatedVideo
+                            if (_lastRenderedVideo.value?.id == targetVideo.id) {
+                                _lastRenderedVideo.value = updatedVideo
+                            }
+                            _videoMetadataMap.update { map ->
+                                map + (updatedVideo.id to generated)
+                            }
+                            loadSavedVideos()
+                        }
+                    }
+                }
+
                 showCustomToast("Metadata berhasil di-generate!")
             } catch (e: TimeoutCancellationException) {
                 // Melewati batas waktu 30 detik -> tampilkan popup dialog Batal / Lanjutkan
@@ -647,16 +672,28 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     /**
      * Downloads video MP4 into "Download/Code Motion Video" folder
      * with live progress indicator, spinner, and percentage.
+     * Uses generated metadata filename as default, or fallback to Vid-WM.mp4 if blank.
      */
     fun downloadVideo(video: SavedVideo) {
+        val meta = _videoMetadataMap.value[video.id] ?: _currentMetadata.value
+        val rawBaseName = if (meta.filename.isNotBlank()) {
+            meta.filename.trim()
+        } else if (!video.file.nameWithoutExtension.startsWith("codemotion_")) {
+            video.file.nameWithoutExtension
+        } else {
+            "Vid-WM"
+        }
+        val safeBaseName = rawBaseName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val targetFilename = if (!safeBaseName.endsWith(".mp4", ignoreCase = true)) "$safeBaseName.mp4" else safeBaseName
+
         viewModelScope.launch {
             _downloadState.value = DownloadState.Downloading(
                 progress = 0.05f,
                 percent = 5,
-                message = "Memulai proses download ${video.file.name}..."
+                message = "Memulai proses download $targetFilename..."
             )
 
-            val uri = storageManager.downloadToCodeMotionFolder(video.file) { progress ->
+            val uri = storageManager.downloadToCodeMotionFolder(video.file, targetFilename) { progress ->
                 val pct = (progress * 100).toInt().coerceIn(0, 100)
                 _downloadState.value = DownloadState.Downloading(
                     progress = progress,
@@ -668,11 +705,11 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
             if (uri != null) {
                 _downloadState.value = DownloadState.Success(
                     folderName = "Download/Code Motion Video",
-                    filename = video.file.name
+                    filename = targetFilename
                 )
                 Toast.makeText(
                     getApplication(),
-                    "✅ Download Selesai! Tersimpan di: Download/Code Motion Video/${video.file.name}",
+                    "✅ Download Selesai! Tersimpan di: Download/Code Motion Video/$targetFilename",
                     Toast.LENGTH_LONG
                 ).show()
             } else {

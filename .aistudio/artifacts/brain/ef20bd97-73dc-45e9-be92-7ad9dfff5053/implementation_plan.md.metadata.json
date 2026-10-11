@@ -1,0 +1,6 @@
+{
+  "summary":  "Revisi rencana implementasi: CSV Shutterstock mengambil kategori langsung dari metadata AI (tanpa default kaku), serta penambahan fitur Auto Rename file MP4 menggunakan filename metadata yang digenerate AI dan fallback default Vid-WM.mp4 saat di-download.",
+  "updatedAt":  "2026-10-11T13:25:20.531012842Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

@@ -26,16 +26,17 @@ object CsvExporter {
         return "\"$escaped\""
     }
 
-    private fun getMp4Filename(metadata: VideoMetadata, fallback: String = "video.mp4"): String {
+    private fun getMp4Filename(metadata: VideoMetadata, fallback: String = "Vid-WM.mp4"): String {
         val raw = if (metadata.filename.isNotBlank()) metadata.filename.trim() else fallback.trim()
-        return if (!raw.endsWith(".mp4", ignoreCase = true)) "$raw.mp4" else raw
+        val safeRaw = raw.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        return if (!safeRaw.endsWith(".mp4", ignoreCase = true)) "$safeRaw.mp4" else safeRaw
     }
 
     /**
      * Menghasilkan teks CSV sesuai standar Adobe Stock:
      * Header: Filename,Title,Keywords,Category,Releases
      */
-    fun buildAdobeStockCsv(items: List<VideoMetadata>, defaultFilename: String = "video.mp4"): String {
+    fun buildAdobeStockCsv(items: List<VideoMetadata>, defaultFilename: String = "Vid-WM.mp4"): String {
         val header = "Filename,Title,Keywords,Category,Releases"
         val rows = items.map { item ->
             val fn = escapeCsv(getMp4Filename(item, defaultFilename))
@@ -49,20 +50,18 @@ object CsvExporter {
     }
 
     /**
-     * Menghasilkan teks CSV sesuai standar Shutterstock:
-     * Header: Filename,Description,Keywords,Categories,Editorial,Mature content,Illustration
+     * Menghasilkan teks CSV sesuai standar resmi Shutterstock Video:
+     * Tepat 4 Kolom: Filename,Description,Keywords,Categories
+     * Kategori murni diambil dari hasil generate metadata AI (item.categories) tanpa kategori default.
      */
-    fun buildShutterstockCsv(items: List<VideoMetadata>, defaultFilename: String = "video.mp4"): String {
-        val header = "Filename,Description,Keywords,Categories,Editorial,Mature content,Illustration"
+    fun buildShutterstockCsv(items: List<VideoMetadata>, defaultFilename: String = "Vid-WM.mp4"): String {
+        val header = "Filename,Description,Keywords,Categories"
         val rows = items.map { item ->
             val fn = escapeCsv(getMp4Filename(item, defaultFilename))
             val desc = escapeCsv(item.description.ifBlank { item.title.ifBlank { item.filename } })
             val keywords = escapeCsv(item.cleanKeywordsString())
-            val categories = escapeCsv("Abstract, Backgrounds")
-            val editorial = "no"
-            val matureContent = "no"
-            val illustration = "yes"
-            "$fn,$desc,$keywords,$categories,$editorial,$matureContent,$illustration"
+            val categories = escapeCsv(item.categories.trim())
+            "$fn,$desc,$keywords,$categories"
         }
         return (listOf(header) + rows).joinToString("\n")
     }
@@ -71,7 +70,7 @@ object CsvExporter {
      * Menghasilkan teks CSV sesuai standar Vecteezy:
      * Header: Filename,Title,Description,Keywords,License
      */
-    fun buildVecteezyCsv(items: List<VideoMetadata>, defaultFilename: String = "video.mp4"): String {
+    fun buildVecteezyCsv(items: List<VideoMetadata>, defaultFilename: String = "Vid-WM.mp4"): String {
         val header = "Filename,Title,Description,Keywords,License"
         val rows = items.map { item ->
             val fn = escapeCsv(getMp4Filename(item, defaultFilename))

@@ -134,7 +134,7 @@ fun StockMetadataCard(
                 // Tombol Clear untuk hapus all metadata
                 OutlinedButton(
                     onClick = {
-                        onMetadataChange(VideoMetadata(filename = "", title = "", description = "", keywords = ""))
+                        onMetadataChange(VideoMetadata(filename = "", title = "", description = "", keywords = "", categories = ""))
                     },
                     modifier = Modifier.height(34.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF43F5E)),
@@ -431,7 +431,62 @@ fun StockMetadataCard(
                 )
             }
 
-            // Field 3: Keywords - Kolom input dengan tombol Add di sebelah kanan & Clear Keywords
+            // Field 3: Category (Shutterstock)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Category (Shutterstock)",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFE2E8F0)
+                        )
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                CsvExporter.copyToClipboard(context, "Category", metadata.categories)
+                            },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Salin Category",
+                                tint = SkyGlow,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = metadata.categories,
+                    onValueChange = { onMetadataChange(metadata.copy(categories = it)) },
+                    placeholder = {
+                        Text("e.g. Technology, Backgrounds/Textures", color = Color(0xFF64748B), fontSize = 13.sp)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x66080E24),
+                        unfocusedContainerColor = Color(0x44080E24),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color(0xFFE2E8F0),
+                        focusedBorderColor = SkyGlow,
+                        unfocusedBorderColor = DarkBorder.copy(alpha = 0.7f)
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    singleLine = true
+                )
+            }
+
+            // Field 4: Keywords - Kolom input dengan tombol Add di sebelah kanan & Clear Keywords
             val currentKeywordsList = remember(metadata.keywords) { metadata.parseKeywordsList() }
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

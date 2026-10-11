@@ -73,9 +73,46 @@ class VideoStorageManager(private val context: Context) {
     }
 
     fun createNewVideoFile(filenamePrefix: String): File {
+        val prefix = if (filenamePrefix.isNotBlank()) filenamePrefix.trim() else "Vid-WM"
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val name = "${filenamePrefix}_${timestamp}.mp4"
+        val name = "${prefix}_${timestamp}.mp4"
         return File(videoDir, name)
+    }
+
+    /**
+     * Renames a video file (and its accompanying metadata JSON) to a new name derived from generated metadata filename.
+     */
+    fun renameVideoFile(oldFile: File, newNameWithoutExtension: String): File? {
+        try {
+            if (!oldFile.exists()) return null
+            val rawName = newNameWithoutExtension.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            val cleanName = if (rawName.isBlank()) "Vid-WM" else rawName.removeSuffix(".mp4").removeSuffix(".MP4")
+            val targetFile = File(videoDir, "$cleanName.mp4")
+
+            if (oldFile.absolutePath == targetFile.absolutePath) {
+                return oldFile
+            }
+
+            // If another file with the same name already exists, remove it or rename safely
+            if (targetFile.exists()) {
+                targetFile.delete()
+            }
+
+            val success = oldFile.renameTo(targetFile)
+            if (success) {
+                // Also rename metadata JSON if present
+                val oldMeta = File(videoDir, "${oldFile.nameWithoutExtension}.meta.json")
+                if (oldMeta.exists()) {
+                    val newMeta = File(videoDir, "$cleanName.meta.json")
+                    if (newMeta.exists()) newMeta.delete()
+                    oldMeta.renameTo(newMeta)
+                }
+                return targetFile
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
     }
 
     /**
@@ -84,6 +121,7 @@ class VideoStorageManager(private val context: Context) {
      */
     suspend fun downloadToCodeMotionFolder(
         videoFile: File,
+        targetFilename: String? = null,
         onProgress: suspend (Float) -> Unit
     ): Uri? = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
@@ -97,17 +135,31 @@ class VideoStorageManager(private val context: Context) {
             val folderRelativePath = "${Environment.DIRECTORY_DOWNLOADS}/Code Motion Video"
             val totalBytes = maxOf(videoFile.length(), 1L)
 
+            val rawTarget = targetFilename?.trim()
+            val finalFilename = if (!rawTarget.isNullOrBlank()) {
+                val safe = rawTarget.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                if (!safe.endsWith(".mp4", ignoreCase = true)) "$safe.mp4" else safe
+            } else {
+                videoFile.name
+            }
+
             // 1. Ensure physical fallback directory exists
             try {
                 val publicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Code Motion Video")
                 if (!publicDir.exists()) publicDir.mkdirs()
+                val fallbackFile = File(publicDir, finalFilename)
+                FileOutputStream(fallbackFile).use { fos ->
+                    FileInputStream(videoFile).use { fis ->
+                        fis.copyTo(fos)
+                    }
+                }
             } catch (e: Exception) {
                 // Ignore fallback creation error on newer Android scoped storage
             }
 
             // 2. Prepare MediaStore entry
             val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, videoFile.name)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, finalFilename)
                 put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
                 put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
