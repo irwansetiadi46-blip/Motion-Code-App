@@ -4,13 +4,18 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,15 +39,27 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDown
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextLayoutResult
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
@@ -71,6 +88,66 @@ fun CodeTerminalEditor(
 
     var textFieldValue by remember {
         mutableStateOf(TextFieldValue(code, TextRange(0)))
+    }
+
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var editorHeightPx by remember { mutableIntStateOf(0) }
+
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val isKeyboardVisible = imeBottom > 0
+
+    val miniVerticalScroll = rememberScrollState()
+    val miniHorizontalScroll = rememberScrollState()
+
+    // Smart Cursor Scroll: pointer selalu terlihat tanpa lompatan scroll jauh
+    fun keepCursorVisible(cursorPos: Int, animated: Boolean = true) {
+        val layout = textLayoutResult ?: return
+        if (editorHeightPx <= 0) return
+
+        val clampedOffset = cursorPos.coerceIn(0, textFieldValue.text.length)
+        val lineIndex = layout.getLineForOffset(clampedOffset)
+        val lineTopPx = layout.getLineTop(lineIndex)
+        val lineBottomPx = layout.getLineBottom(lineIndex)
+        val lineHeightPx = (lineBottomPx - lineTopPx).coerceAtLeast(24f)
+
+        val currentScrollY = miniVerticalScroll.value.toFloat()
+        val visibleHeight = editorHeightPx.toFloat()
+
+        val topMarginPx = lineHeightPx * 1.5f
+        val bottomMarginPx = lineHeightPx * 2.5f
+
+        val cursorRelBottom = lineBottomPx - currentScrollY
+        val cursorRelTop = lineTopPx - currentScrollY
+
+        if (cursorRelBottom > (visibleHeight - bottomMarginPx)) {
+            val targetScroll = (lineBottomPx - visibleHeight + bottomMarginPx).coerceAtLeast(0f)
+            coroutineScope.launch {
+                if (animated) {
+                    miniVerticalScroll.animateScrollTo(targetScroll.toInt())
+                } else {
+                    miniVerticalScroll.scrollTo(targetScroll.toInt())
+                }
+            }
+        } else if (cursorRelTop < topMarginPx) {
+            val targetScroll = (lineTopPx - topMarginPx).coerceAtLeast(0f)
+            coroutineScope.launch {
+                if (animated) {
+                    miniVerticalScroll.animateScrollTo(targetScroll.toInt())
+                } else {
+                    miniVerticalScroll.scrollTo(targetScroll.toInt())
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(isKeyboardVisible) {
+        if (isKeyboardVisible) {
+            keepCursorVisible(textFieldValue.selection.start, animated = true)
+        }
     }
 
     LaunchedEffect(code) {
@@ -242,49 +319,100 @@ fun CodeTerminalEditor(
             }
 
             // Code text area without line numbers gutter (clean & spacious)
-            val miniVerticalScroll = rememberScrollState()
-            val miniHorizontalScroll = rememberScrollState()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(260.dp)
                     .background(TerminalBg)
+                    .onGloballyPositioned { coords ->
+                        val newH = coords.size.height
+                        if (editorHeightPx != newH) {
+                            editorHeightPx = newH
+                            if (isKeyboardVisible) {
+                                keepCursorVisible(textFieldValue.selection.start, animated = true)
+                            }
+                        }
+                    }
                     .verticalScroll(miniVerticalScroll)
                     .horizontalScroll(miniHorizontalScroll)
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
-                if (textFieldValue.text.isEmpty()) {
-                    Text(
-                        text = "// Tulis atau paste kode animasi canvas di sini...\n// Contoh: c.getContext('2d');\n// Wajib ada loop animasi.",
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp,
-                            color = Color(0xFF475569)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        if (event.changes.any { it.changedToDown() }) {
+                                            focusRequester.requestFocus()
+                                            keyboardController?.show()
+                                        }
+                                    }
+                                }
+                            }
+                    ) {
+                        if (textFieldValue.text.isEmpty()) {
+                            Text(
+                                text = "// Tulis atau paste kode animasi canvas di sini...\n// Contoh: c.getContext('2d');\n// Wajib ada loop animasi.",
+                                style = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    lineHeight = 18.sp,
+                                    color = Color(0xFF475569)
+                                )
+                            )
+                        }
+
+                        BasicTextField(
+                            value = textFieldValue,
+                            onValueChange = { newValue ->
+                                textFieldValue = newValue
+                                onCodeChange(newValue.text)
+                                keepCursorVisible(newValue.selection.start, animated = true)
+                            },
+                            onTextLayout = { layout ->
+                                textLayoutResult = layout
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                            textStyle = TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                                color = Color(0xFFE2E8F0)
+                            ),
+                            cursorBrush = SolidColor(ElectricCyan),
+                            visualTransformation = JsSyntaxHighlighter,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.None,
+                                autoCorrect = false
+                            )
                         )
+                    }
+
+                    // Area kosong di bawah kode: jika di-tap langsung memunculkan keyboard dan kursor di akhir
+                    Spacer(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                focusRequester.requestFocus()
+                                keyboardController?.show()
+                                val endPos = textFieldValue.text.length
+                                textFieldValue = textFieldValue.copy(selection = TextRange(endPos))
+                                keepCursorVisible(endPos, animated = true)
+                            }
                     )
                 }
-
-                BasicTextField(
-                    value = textFieldValue,
-                    onValueChange = {
-                        textFieldValue = it
-                        onCodeChange(it.text)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
-                        color = Color(0xFFE2E8F0)
-                    ),
-                    cursorBrush = SolidColor(ElectricCyan),
-                    visualTransformation = JsSyntaxHighlighter,
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.None,
-                        autoCorrect = false
-                    )
-                )
             }
         }
     }

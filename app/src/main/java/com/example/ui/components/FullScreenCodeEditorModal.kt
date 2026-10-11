@@ -6,6 +6,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -135,8 +140,8 @@ fun FullScreenCodeEditorModal(
         "rgba" to "rgba(0, 0, 0, 0.2)"
     )
 
-    // Adjust scroll so pointer sits comfortably 2 lines above keyboard when active
-    fun adjustScrollForCursor(cursorPos: Int) {
+    // Smart Cursor Scroll: pointer selalu terlihat tanpa lompatan scroll jauh
+    fun keepCursorVisible(cursorPos: Int, animated: Boolean = true) {
         val layout = textLayoutResult ?: return
         if (editorHeightPx <= 0) return
 
@@ -144,21 +149,45 @@ fun FullScreenCodeEditorModal(
         val lineIndex = layout.getLineForOffset(clampedOffset)
         val lineTopPx = layout.getLineTop(lineIndex)
         val lineBottomPx = layout.getLineBottom(lineIndex)
-        val lineHeightPx = (lineBottomPx - lineTopPx).coerceAtLeast(30f)
+        val lineHeightPx = (lineBottomPx - lineTopPx).coerceAtLeast(26f)
 
-        // User requirement: Pointer stays two lines above the appearing keyboard
-        // Target Y inside viewport: viewport height minus 3 lines of margin
-        val targetLineYInViewport = (editorHeightPx - lineHeightPx * 3f).coerceAtLeast(lineHeightPx)
-        val desiredScrollY = (lineTopPx - targetLineYInViewport).coerceAtLeast(0f)
+        val currentScrollY = editorVerticalScrollState.value.toFloat()
+        val visibleHeight = editorHeightPx.toFloat()
 
-        coroutineScope.launch {
-            editorVerticalScrollState.animateScrollTo(desiredScrollY.toInt())
+        // 2 lines comfort clearance
+        val topMarginPx = lineHeightPx * 1.5f
+        val bottomMarginPx = lineHeightPx * 2.5f
+
+        val cursorRelBottom = lineBottomPx - currentScrollY
+        val cursorRelTop = lineTopPx - currentScrollY
+
+        if (cursorRelBottom > (visibleHeight - bottomMarginPx)) {
+            // Kursor tertutup keyboard atau mendekati dasar: scroll ke bawah secukupnya
+            val targetScroll = (lineBottomPx - visibleHeight + bottomMarginPx).coerceAtLeast(0f)
+            coroutineScope.launch {
+                if (animated) {
+                    editorVerticalScrollState.animateScrollTo(targetScroll.toInt())
+                } else {
+                    editorVerticalScrollState.scrollTo(targetScroll.toInt())
+                }
+            }
+        } else if (cursorRelTop < topMarginPx) {
+            // Kursor di atas area terlihat: scroll ke atas secukupnya
+            val targetScroll = (lineTopPx - topMarginPx).coerceAtLeast(0f)
+            coroutineScope.launch {
+                if (animated) {
+                    editorVerticalScrollState.animateScrollTo(targetScroll.toInt())
+                } else {
+                    editorVerticalScrollState.scrollTo(targetScroll.toInt())
+                }
+            }
         }
+        // Jika kursor sudah berada di area terlihat, TIDAK PERLU SCROLL sama sekali (tanpa lompatan jauh)
     }
 
     LaunchedEffect(isKeyboardVisible) {
         if (isKeyboardVisible) {
-            adjustScrollForCursor(textFieldValue.selection.start)
+            keepCursorVisible(textFieldValue.selection.start, animated = true)
         }
     }
 
@@ -344,66 +373,94 @@ fun FullScreenCodeEditorModal(
                             .fillMaxWidth()
                             .background(TerminalBg)
                             .onGloballyPositioned { coordinates ->
-                                editorHeightPx = coordinates.size.height
+                                val newH = coordinates.size.height
+                                if (editorHeightPx != newH) {
+                                    editorHeightPx = newH
+                                    if (isKeyboardVisible) {
+                                        keepCursorVisible(textFieldValue.selection.start, animated = true)
+                                    }
+                                }
                             }
                             .verticalScroll(editorVerticalScrollState)
                             .horizontalScroll(editorHorizontalScrollState)
-                            .padding(horizontal = 14.dp, vertical = 12.dp)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = { tapOffset ->
-                                        focusRequester.requestFocus()
-                                        keyboardController?.show()
-
-                                        textLayoutResult?.let { layout ->
-                                            val offset = layout.getOffsetForPosition(tapOffset)
-                                            val clamped = offset.coerceIn(0, textFieldValue.text.length)
-                                            textFieldValue = textFieldValue.copy(
-                                                selection = TextRange(clamped)
-                                            )
-                                            adjustScrollForCursor(clamped)
-                                        }
-                                    }
-                                )
-                            }
                     ) {
-                        if (textFieldValue.text.isEmpty()) {
-                            Text(
-                                text = "// Tulis atau paste kode animasi canvas di sini...\n// Contoh: c.getContext('2d');\n// Wajib ada loop animasi.",
-                                style = TextStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    lineHeight = 18.sp,
-                                    color = Color(0xFF475569)
-                                )
-                            )
-                        }
-
-                        BasicTextField(
-                            value = textFieldValue,
-                            onValueChange = { newValue ->
-                                textFieldValue = newValue
-                                onCodeChange(newValue.text)
-                            },
-                            onTextLayout = { layout ->
-                                textLayoutResult = layout
-                            },
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .focusRequester(focusRequester),
-                            textStyle = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
-                                lineHeight = 18.sp,
-                                color = Color(0xFFE2E8F0)
-                            ),
-                            cursorBrush = SolidColor(ElectricCyan),
-                            visualTransformation = JsSyntaxHighlighter,
-                            keyboardOptions = KeyboardOptions(
-                                capitalization = KeyboardCapitalization.None,
-                                autoCorrect = false
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .pointerInput(Unit) {
+                                        awaitPointerEventScope {
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                                if (event.changes.any { it.changedToDown() }) {
+                                                    focusRequester.requestFocus()
+                                                    keyboardController?.show()
+                                                }
+                                            }
+                                        }
+                                    }
+                            ) {
+                                if (textFieldValue.text.isEmpty()) {
+                                    Text(
+                                        text = "// Tulis atau paste kode animasi canvas di sini...\n// Contoh: c.getContext('2d');\n// Wajib ada loop animasi.",
+                                        style = TextStyle(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp,
+                                            lineHeight = 18.sp,
+                                            color = Color(0xFF475569)
+                                        )
+                                    )
+                                }
+
+                                BasicTextField(
+                                    value = textFieldValue,
+                                    onValueChange = { newValue ->
+                                        textFieldValue = newValue
+                                        onCodeChange(newValue.text)
+                                        keepCursorVisible(newValue.selection.start, animated = true)
+                                    },
+                                    onTextLayout = { layout ->
+                                        textLayoutResult = layout
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(focusRequester),
+                                    textStyle = TextStyle(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        lineHeight = 18.sp,
+                                        color = Color(0xFFE2E8F0)
+                                    ),
+                                    cursorBrush = SolidColor(ElectricCyan),
+                                    visualTransformation = JsSyntaxHighlighter,
+                                    keyboardOptions = KeyboardOptions(
+                                        capitalization = KeyboardCapitalization.None,
+                                        autoCorrect = false
+                                    )
+                                )
+                            }
+
+                            // Tap pada area kosong di bawah kode: buka keyboard dan arahkan kursor ke akhir
+                            Spacer(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 160.dp)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) {
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                        val endPos = textFieldValue.text.length
+                                        textFieldValue = textFieldValue.copy(selection = TextRange(endPos))
+                                        keepCursorVisible(endPos, animated = true)
+                                    }
                             )
-                        )
+                        }
                     }
                 }
             }

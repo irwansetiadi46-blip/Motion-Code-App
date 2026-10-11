@@ -44,12 +44,16 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,11 +100,22 @@ fun StudioScreen(
 
     val isRendering = renderState is RenderState.Rendering || renderState is RenderState.Preparing || renderState is RenderState.Finalizing
 
+    val studioScrollState = rememberScrollState()
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val isKeyboardVisible = imeBottom > 0
+
+    LaunchedEffect(isKeyboardVisible) {
+        if (isKeyboardVisible) {
+            studioScrollState.animateScrollTo(studioScrollState.maxValue)
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Transparent)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(studioScrollState)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

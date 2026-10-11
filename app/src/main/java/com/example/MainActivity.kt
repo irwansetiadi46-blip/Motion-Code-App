@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -81,7 +83,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
 
         setContent {
             MyApplicationTheme {
@@ -102,6 +107,10 @@ fun CodeMotionApp(
 
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val imeBottom = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(density)
+    val isKeyboardVisible = imeBottom > 0
 
     Box(
         modifier = Modifier
@@ -216,88 +225,91 @@ fun CodeMotionApp(
             },
             bottomBar = {
                 // Glassmorphism Bottom Navigation Bar (Gradient with aesthetic frosted glass)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color.Transparent,
-                        border = BorderStroke(1.dp, GlassNavBorder)
+                // Disembunyikan saat keyboard muncul agar layar tidak sesak dan konten tidak tertutup
+                if (!isKeyboardVisible) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        NavigationBar(
-                            containerColor = Color.Transparent,
-                            modifier = Modifier
-                                .background(GlassNavBackground)
-                                .clip(RoundedCornerShape(22.dp)),
-                            tonalElevation = 0.dp
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(22.dp),
+                            color = Color.Transparent,
+                            border = BorderStroke(1.dp, GlassNavBorder)
                         ) {
-                            NavigationBarItem(
-                                selected = activeTab == NavigationTab.STUDIO,
-                                onClick = { viewModel.setActiveTab(NavigationTab.STUDIO) },
-                                icon = {
-                                    Icon(imageVector = Icons.Default.Code, contentDescription = "Studio")
-                                },
-                                label = { Text("Studio", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.White,
-                                    selectedTextColor = SkyGlow,
-                                    indicatorColor = Color(0x660284C7),
-                                    unselectedIconColor = Color(0xFF818CF8).copy(alpha = 0.6f),
-                                    unselectedTextColor = Color(0xFF818CF8).copy(alpha = 0.6f)
+                            NavigationBar(
+                                containerColor = Color.Transparent,
+                                modifier = Modifier
+                                    .background(GlassNavBackground)
+                                    .clip(RoundedCornerShape(22.dp)),
+                                tonalElevation = 0.dp
+                            ) {
+                                NavigationBarItem(
+                                    selected = activeTab == NavigationTab.STUDIO,
+                                    onClick = { viewModel.setActiveTab(NavigationTab.STUDIO) },
+                                    icon = {
+                                        Icon(imageVector = Icons.Default.Code, contentDescription = "Studio")
+                                    },
+                                    label = { Text("Studio", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Color.White,
+                                        selectedTextColor = SkyGlow,
+                                        indicatorColor = Color(0x660284C7),
+                                        unselectedIconColor = Color(0xFF818CF8).copy(alpha = 0.6f),
+                                        unselectedTextColor = Color(0xFF818CF8).copy(alpha = 0.6f)
+                                    )
                                 )
-                            )
 
-                            NavigationBarItem(
-                                selected = activeTab == NavigationTab.EXPORT,
-                                onClick = { viewModel.setActiveTab(NavigationTab.EXPORT) },
-                                icon = {
-                                    Icon(imageVector = Icons.Default.MovieCreation, contentDescription = "Export")
-                                },
-                                label = { Text("Export", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.White,
-                                    selectedTextColor = SkyGlow,
-                                    indicatorColor = Color(0x660284C7),
-                                    unselectedIconColor = Color(0xFF818CF8).copy(alpha = 0.6f),
-                                    unselectedTextColor = Color(0xFF818CF8).copy(alpha = 0.6f)
+                                NavigationBarItem(
+                                    selected = activeTab == NavigationTab.EXPORT,
+                                    onClick = { viewModel.setActiveTab(NavigationTab.EXPORT) },
+                                    icon = {
+                                        Icon(imageVector = Icons.Default.MovieCreation, contentDescription = "Export")
+                                    },
+                                    label = { Text("Export", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Color.White,
+                                        selectedTextColor = SkyGlow,
+                                        indicatorColor = Color(0x660284C7),
+                                        unselectedIconColor = Color(0xFF818CF8).copy(alpha = 0.6f),
+                                        unselectedTextColor = Color(0xFF818CF8).copy(alpha = 0.6f)
+                                    )
                                 )
-                            )
 
-                            NavigationBarItem(
-                                selected = activeTab == NavigationTab.METADATA,
-                                onClick = { viewModel.setActiveTab(NavigationTab.METADATA) },
-                                icon = {
-                                    Icon(imageVector = Icons.Default.DataObject, contentDescription = "Metadata")
-                                },
-                                label = { Text("Metadata", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.White,
-                                    selectedTextColor = SkyGlow,
-                                    indicatorColor = Color(0x660284C7),
-                                    unselectedIconColor = Color(0xFF818CF8).copy(alpha = 0.6f),
-                                    unselectedTextColor = Color(0xFF818CF8).copy(alpha = 0.6f)
+                                NavigationBarItem(
+                                    selected = activeTab == NavigationTab.METADATA,
+                                    onClick = { viewModel.setActiveTab(NavigationTab.METADATA) },
+                                    icon = {
+                                        Icon(imageVector = Icons.Default.DataObject, contentDescription = "Metadata")
+                                    },
+                                    label = { Text("Metadata", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Color.White,
+                                        selectedTextColor = SkyGlow,
+                                        indicatorColor = Color(0x660284C7),
+                                        unselectedIconColor = Color(0xFF818CF8).copy(alpha = 0.6f),
+                                        unselectedTextColor = Color(0xFF818CF8).copy(alpha = 0.6f)
+                                    )
                                 )
-                            )
 
-                            NavigationBarItem(
-                                selected = activeTab == NavigationTab.ENGINE,
-                                onClick = { viewModel.setActiveTab(NavigationTab.ENGINE) },
-                                icon = {
-                                    Icon(imageVector = Icons.Default.VpnKey, contentDescription = "Engine")
-                                },
-                                label = { Text("Engine", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.White,
-                                    selectedTextColor = Color(0xFFFF9E40),
-                                    indicatorColor = Color(0x66FF6D00),
-                                    unselectedIconColor = Color(0xFF818CF8).copy(alpha = 0.6f),
-                                    unselectedTextColor = Color(0xFF818CF8).copy(alpha = 0.6f)
+                                NavigationBarItem(
+                                    selected = activeTab == NavigationTab.ENGINE,
+                                    onClick = { viewModel.setActiveTab(NavigationTab.ENGINE) },
+                                    icon = {
+                                        Icon(imageVector = Icons.Default.VpnKey, contentDescription = "Engine")
+                                    },
+                                    label = { Text("Engine", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = Color.White,
+                                        selectedTextColor = Color(0xFFFF9E40),
+                                        indicatorColor = Color(0x66FF6D00),
+                                        unselectedIconColor = Color(0xFF818CF8).copy(alpha = 0.6f),
+                                        unselectedTextColor = Color(0xFF818CF8).copy(alpha = 0.6f)
+                                    )
                                 )
-                            )
+                            }
                         }
                     }
                 }
@@ -307,6 +319,9 @@ fun CodeMotionApp(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .then(
+                        if (isKeyboardVisible) Modifier.imePadding().navigationBarsPadding() else Modifier
+                    )
             ) {
                 when (activeTab) {
                     NavigationTab.STUDIO -> {
@@ -352,7 +367,9 @@ fun CodeMotionApp(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 90.dp),
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(bottom = if (isKeyboardVisible) 16.dp else 88.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 ThemedCustomToast(
