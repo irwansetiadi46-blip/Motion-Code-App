@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.MovieCreation
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.VpnKey
@@ -41,6 +42,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,7 +62,7 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.components.FullScreenCodeEditorModal
 import com.example.ui.screens.EngineScreen
 import com.example.ui.screens.ExportScreen
-import com.example.ui.screens.GalleryScreen
+import com.example.ui.screens.MetadataScreen
 import com.example.ui.screens.StudioScreen
 import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.GlassHeaderBackground
@@ -86,6 +97,7 @@ fun CodeMotionApp(
 ) {
     val activeTab by viewModel.activeTab.collectAsState()
     val userCode by viewModel.userCode.collectAsState()
+    val customToast by viewModel.customToastMessage.collectAsState()
     var isFullscreenEditorOpen by remember { mutableStateOf(false) }
 
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -256,12 +268,12 @@ fun CodeMotionApp(
                             )
 
                             NavigationBarItem(
-                                selected = activeTab == NavigationTab.GALLERY,
-                                onClick = { viewModel.setActiveTab(NavigationTab.GALLERY) },
+                                selected = activeTab == NavigationTab.METADATA,
+                                onClick = { viewModel.setActiveTab(NavigationTab.METADATA) },
                                 icon = {
-                                    Icon(imageVector = Icons.Default.VideoLibrary, contentDescription = "Gallery")
+                                    Icon(imageVector = Icons.Default.DataObject, contentDescription = "Metadata")
                                 },
-                                label = { Text("Galeri", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                                label = { Text("Metadata", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = Color.White,
                                     selectedTextColor = SkyGlow,
@@ -309,8 +321,8 @@ fun CodeMotionApp(
                             viewModel = viewModel
                         )
                     }
-                    NavigationTab.GALLERY -> {
-                        GalleryScreen(
+                    NavigationTab.METADATA -> {
+                        MetadataScreen(
                             viewModel = viewModel
                         )
                     }
@@ -332,6 +344,84 @@ fun CodeMotionApp(
                         }
                     )
                 }
+            }
+        }
+
+        // Custom Themed Toast Notification matching App Theme
+        customToast?.let { msg ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 90.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                ThemedCustomToast(
+                    message = msg,
+                    onDismiss = { viewModel.dismissCustomToast() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ThemedCustomToast(
+    message: String,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = message.isNotEmpty(),
+        enter = fadeIn() + slideInVertically(initialOffsetY = { 60 }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { 60 }),
+        modifier = modifier
+    ) {
+        Surface(
+            onClick = onDismiss,
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xF0080E24),
+            border = BorderStroke(
+                1.5.dp,
+                Brush.horizontalGradient(
+                    listOf(
+                        Color(0xFFFF6D00),
+                        Color(0xFFA855F7),
+                        Color(0xFF38BDF8)
+                    )
+                )
+            ),
+            shadowElevation = 10.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0x33FF6D00),
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFFFF9E40),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                )
             }
         }
     }

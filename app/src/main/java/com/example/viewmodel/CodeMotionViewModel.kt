@@ -11,10 +11,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.ApiKeyRepository
+import com.example.data.MetadataRepository
 import com.example.data.PresetRepository
 import com.example.data.VideoStorageManager
 import com.example.engine.BridgeEvent
 import com.example.engine.WebCodecsBridge
+import com.example.model.MicrostockPlatform
 import com.example.model.QualityBitrate
 import com.example.model.RenderConfig
 import com.example.model.RenderState
@@ -36,7 +38,7 @@ import java.io.File
 enum class NavigationTab(val label: String) {
     STUDIO("Editor & Live"),
     EXPORT("Export Video"),
-    GALLERY("Saved Videos"),
+    METADATA("Metadata"),
     ENGINE("Engine & API")
 }
 
@@ -59,6 +61,52 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     private val storageManager = VideoStorageManager(application)
     private val metadataService = GeminiMetadataService()
     private val apiKeyRepository = ApiKeyRepository(application)
+    private val metadataRepository = MetadataRepository(application)
+
+    private val _savedMetadataList = MutableStateFlow<List<VideoMetadata>>(metadataRepository.getAllMetadata())
+    val savedMetadataList: StateFlow<List<VideoMetadata>> = _savedMetadataList.asStateFlow()
+
+    fun loadSavedMetadata() {
+        _savedMetadataList.value = metadataRepository.getAllMetadata()
+    }
+
+    fun addSavedMetadata(metadata: VideoMetadata) {
+        metadataRepository.addMetadata(metadata)
+        loadSavedMetadata()
+    }
+
+    fun updateSavedMetadata(metadata: VideoMetadata) {
+        metadataRepository.updateMetadata(metadata)
+        loadSavedMetadata()
+    }
+
+    fun deleteSavedMetadata(id: String) {
+        metadataRepository.deleteMetadata(id)
+        loadSavedMetadata()
+        showCustomToast("Metadata berhasil dihapus")
+    }
+
+    fun clearAllSavedMetadata() {
+        metadataRepository.clearAll()
+        loadSavedMetadata()
+        showCustomToast("Semua metadata berhasil dihapus")
+    }
+
+    fun downloadAllMetadataCsv() {
+        viewModelScope.launch {
+            val list = _savedMetadataList.value
+            if (list.isEmpty()) {
+                showCustomToast("Tidak ada metadata untuk di-download")
+                return@launch
+            }
+            val uri = CsvExporter.saveAllMetadataCsvToDownloads(getApplication(), list)
+            if (uri != null) {
+                showCustomToast("✅ Semua metadata tersimpan dalam satu file CSV!")
+            } else {
+                showCustomToast("Gagal menyimpan file CSV")
+            }
+        }
+    }
 
     private val _userApiKeys = MutableStateFlow<List<String>>(apiKeyRepository.getApiKeys())
     val userApiKeys: StateFlow<List<String>> = _userApiKeys.asStateFlow()
@@ -90,6 +138,31 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     fun setActiveApiKeyIndex(index: Int) {
         apiKeyRepository.setActiveIndex(index)
         loadApiKeys()
+    }
+
+    private val _selectedGeminiModel = MutableStateFlow<String>(apiKeyRepository.getSelectedModel())
+    val selectedGeminiModel: StateFlow<String> = _selectedGeminiModel.asStateFlow()
+
+    fun selectGeminiModel(model: String) {
+        _selectedGeminiModel.value = model
+        apiKeyRepository.setSelectedModel(model)
+    }
+
+    private val _customToastMessage = MutableStateFlow<String?>(null)
+    val customToastMessage: StateFlow<String?> = _customToastMessage.asStateFlow()
+
+    fun showCustomToast(message: String) {
+        viewModelScope.launch {
+            _customToastMessage.value = message
+            kotlinx.coroutines.delay(2600)
+            if (_customToastMessage.value == message) {
+                _customToastMessage.value = null
+            }
+        }
+    }
+
+    fun dismissCustomToast() {
+        _customToastMessage.value = null
     }
 
     private val _userCode = MutableStateFlow("")
@@ -325,40 +398,100 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun generateMetadataForCurrentAnimation() {
+    fun startRenderAndGenerateMetadata() {
+        val realtimeCode = _userCode.value.trim()
+        if (realtimeCode.isBlank()) {
+            showCustomToast("No Video to Generate ")
+            return
+        }
+
+        // 1. Mulai render MP4
+        triggerRender()
+
+        // 2. Cek apakah ada API key yang diinput. Jika 0 Api, TIDAK melakukan generate metadata paralel,
+        // hanya render MP4 saja seperti biasa tanpa peringatan dan notiv apapun.
+        val keys = apiKeyRepository.getApiKeys()
+        if (keys.isNotEmpty()) {
+            generateMetadataForCurrentAnimation(isParallelWithRender = true)
+        }
+    }
+
+    fun generateMetadataForCurrentAnimation(isParallelWithRender: Boolean = false) {
+        val realtimeCode = _userCode.value.trim()
+        if (realtimeCode.isBlank()) {
+            if (!isParallelWithRender) {
+                showCustomToast("No Video to Generate ")
+            }
+            return
+        }
+
         viewModelScope.launch {
+            val keys = apiKeyRepository.getApiKeys()
+            if (keys.isEmpty()) {
+                // Jika 0 Api saat proses paralel, tidak menampilkan peringatan/notif apapun
+                if (!isParallelWithRender) {
+                    showCustomToast("Tambahkan API Key di Tab Engine terlebih dahulu")
+                }
+                return@launch
+            }
+
             _isGeneratingMetadata.value = true
             try {
                 val generated = metadataService.generateMetadataWithFailover(
-                    codeSnippet = _userCode.value,
+                    codeSnippet = realtimeCode,
+                    selectedModel = _selectedGeminiModel.value,
                     presetName = _selectedPreset.value.name,
                     repository = apiKeyRepository,
                     onFailover = { oldKeyMasked, newKeyMasked ->
                         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                             loadApiKeys()
-                            Toast.makeText(
-                                getApplication(),
-                                "Failover: Berpindah otomatis ke API key cadangan",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            showCustomToast("Failover: Menggunakan API key cadangan")
                         }
                     }
                 )
                 _currentMetadata.value = generated
+                metadataRepository.addMetadata(generated)
+                loadSavedMetadata()
                 loadApiKeys()
-                Toast.makeText(
-                    getApplication(),
-                    "Metadata berhasil di-generate!",
-                    Toast.LENGTH_SHORT
-                ).show()
+                showCustomToast("Metadata berhasil di-generate!")
             } catch (e: Exception) {
-                Toast.makeText(
-                    getApplication(),
-                    "Gagal generate metadata: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                if (!isParallelWithRender) {
+                    showCustomToast("Gagal generate metadata: ${e.message}")
+                }
             } finally {
                 _isGeneratingMetadata.value = false
+            }
+        }
+    }
+
+    fun downloadMicrostockCsv(
+        items: List<VideoMetadata>,
+        platforms: Set<MicrostockPlatform>,
+        baseName: String = "metadata"
+    ) {
+        if (items.isEmpty() || platforms.isEmpty()) {
+            showCustomToast("Pilih minimal satu platform microstock")
+            return
+        }
+        viewModelScope.launch {
+            val successfulNames = mutableListOf<String>()
+            platforms.forEach { platform ->
+                val uri = CsvExporter.saveMicrostockCsvToDownloads(
+                    context = getApplication(),
+                    items = items,
+                    platform = platform,
+                    baseName = baseName
+                )
+                if (uri != null) {
+                    successfulNames.add(platform.displayName)
+                }
+            }
+
+            if (successfulNames.isNotEmpty()) {
+                val names = successfulNames.joinToString(", ")
+                showCustomToast("✅ Berhasil simpan CSV ($names) di Download/Code Motion Video")
+            } else {
+                showCustomToast("Gagal menyimpan file CSV")
             }
         }
     }
@@ -369,16 +502,13 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
             try {
                 val generated = metadataService.generateMetadataWithFailover(
                     codeSnippet = video.title,
+                    selectedModel = _selectedGeminiModel.value,
                     presetName = video.title,
                     repository = apiKeyRepository,
                     onFailover = { oldKeyMasked, newKeyMasked ->
                         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
                             loadApiKeys()
-                            Toast.makeText(
-                                getApplication(),
-                                "Failover: Berpindah otomatis ke API key cadangan",
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            showCustomToast("Failover: Menggunakan API key cadangan")
                         }
                     }
                 )

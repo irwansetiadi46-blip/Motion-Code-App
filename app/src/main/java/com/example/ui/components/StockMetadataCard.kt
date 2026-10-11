@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -66,10 +65,8 @@ import com.example.util.MetadataValidator
 fun StockMetadataCard(
     metadata: VideoMetadata,
     onMetadataChange: (VideoMetadata) -> Unit,
-    onGenerateAi: () -> Unit,
     onDownloadCsv: () -> Unit,
-    onShareCsv: () -> Unit,
-    isGenerating: Boolean,
+    isGenerating: Boolean = false,
     videoFilename: String = "code_motion_video.mp4",
     modifier: Modifier = Modifier
 ) {
@@ -97,86 +94,51 @@ fun StockMetadataCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Header: "Metadata"
+            // Header: "Metadata" mepet kiri & Tombol Clear All di sebelah kanan
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0x330284C7),
-                    border = BorderStroke(1.dp, Color(0x4438BDF8)),
-                    modifier = Modifier.size(36.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = SkyGlow,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Text(
-                    text = "Metadata",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                )
-            }
-
-            // Tombol Generate Metadata mepet kiri & Tombol Clear All di sebelah kanan
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = onGenerateAi,
-                    enabled = !isGenerating,
-                    modifier = Modifier.height(38.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = ElectricBlue,
-                        disabledContainerColor = Color(0xFF1E293B)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    if (isGenerating) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = Color.White
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Generate Metadata",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0x330284C7),
+                        border = BorderStroke(1.dp, Color(0x4438BDF8)),
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = SkyGlow,
+                                modifier = Modifier.size(18.dp)
                             )
-                        )
+                        }
                     }
+
+                    Text(
+                        text = "Metadata",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
                 }
 
+                // Tombol Clear untuk hapus all metadata
                 OutlinedButton(
                     onClick = {
-                        onMetadataChange(VideoMetadata(title = "", description = "", keywords = ""))
+                        onMetadataChange(VideoMetadata(filename = "", title = "", description = "", keywords = ""))
                     },
-                    modifier = Modifier.height(38.dp),
+                    modifier = Modifier.height(34.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF43F5E)),
                     border = BorderStroke(1.dp, Color(0x66F43F5E)),
                     shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Clear,
@@ -193,6 +155,98 @@ fun StockMetadataCard(
                         )
                     )
                 }
+            }
+
+            // Indikator proses generate paralel
+            AnimatedVisibility(visible = isGenerating) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0x330284C7),
+                    border = BorderStroke(1.dp, Color(0x5538BDF8))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            color = SkyGlow,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Men-generate metadata paralel bersama render MP4...",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = SkyGlow,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Field 0: File Name (English, max 5 words) - di atas Title
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "File Name",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFE2E8F0)
+                        )
+                    )
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "${validation.filenameWordCount}/5 words",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                color = if (validation.isFilenameValid && metadata.filename.isNotBlank()) MatrixGreen else Color(0xFF94A3B8),
+                                fontSize = 11.sp
+                            )
+                        )
+                        IconButton(
+                            onClick = {
+                                CsvExporter.copyToClipboard(context, "File Name", metadata.filename)
+                            },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Salin File Name",
+                                tint = SkyGlow,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = metadata.filename,
+                    onValueChange = { onMetadataChange(metadata.copy(filename = it)) },
+                    placeholder = {
+                        Text("e.g. Neon Wave Animation Loop", color = Color(0xFF64748B), fontSize = 13.sp)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0x66080E24),
+                        unfocusedContainerColor = Color(0x44080E24),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color(0xFFE2E8F0),
+                        focusedBorderColor = SkyGlow,
+                        unfocusedBorderColor = DarkBorder.copy(alpha = 0.7f)
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    singleLine = true
+                )
             }
 
             // Field 1: Title (English)
@@ -495,69 +549,25 @@ fun StockMetadataCard(
                 }
             }
 
-            // Export Actions Row - Clean & Minimal
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Export Action: Sisakan Download Csv (Hapus share & copy semua metadata)
+            Button(
+                onClick = onDownloadCsv,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
+                shape = RoundedCornerShape(10.dp)
             ) {
-                Button(
-                    onClick = onDownloadCsv,
-                    modifier = Modifier
-                        .weight(1.3f)
-                        .height(44.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Download CSV",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        val fullText = "Title:\n${metadata.title}\n\nDescription:\n${metadata.description}\n\nKeywords:\n${metadata.cleanKeywordsString()}"
-                        CsvExporter.copyToClipboard(context, "Semua Metadata", fullText)
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    border = BorderStroke(1.dp, DarkBorder),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Salin", fontSize = 12.sp)
-                }
-
-                OutlinedButton(
-                    onClick = onShareCsv,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                    border = BorderStroke(1.dp, DarkBorder),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Bagikan", fontSize = 12.sp)
-                }
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Download CSV",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
             }
         }
     }

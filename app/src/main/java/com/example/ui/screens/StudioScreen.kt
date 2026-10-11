@@ -393,65 +393,22 @@ fun StudioScreen(
 
         // Section: Video Mp4 Preview (Displayed after render finishes or when video selected)
         if (lastRenderedVideo != null) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Video Mp4 Preview",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    )
-                    Text(
-                        text = "Hasil Render Siap Download",
-                        style = MaterialTheme.typography.labelSmall.copy(color = MatrixGreen)
-                    )
-                }
-
-                VideoPlayerView(
-                    video = lastRenderedVideo!!,
-                    onDownload = { viewModel.downloadVideo(lastRenderedVideo!!) },
-                    onShare = { viewModel.shareVideo(lastRenderedVideo!!) },
-                    onDelete = { viewModel.deleteVideo(lastRenderedVideo!!) },
-                    onSaveToGallery = { viewModel.saveVideoToGallery(lastRenderedVideo!!) }
-                )
-            }
+            VideoPlayerView(
+                video = lastRenderedVideo!!,
+                onDownload = { viewModel.downloadVideo(lastRenderedVideo!!) },
+                onShare = { viewModel.shareVideo(lastRenderedVideo!!) },
+                onDelete = { viewModel.deleteVideo(lastRenderedVideo!!) },
+                onSaveToGallery = { viewModel.saveVideoToGallery(lastRenderedVideo!!) }
+            )
         }
 
         // Code Editor with Fullscreen Trigger & Syntax Highlighting
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Terminal Code Editor",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                )
-                Text(
-                    text = "● Real-Time Aktif",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = MatrixGreen
-                    )
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            CodeTerminalEditor(
-                code = userCode,
-                onCodeChange = { viewModel.updateCode(it) },
-                onApplyCode = { viewModel.applyCodeToPreview() },
-                onOpenFullscreen = onOpenFullscreen
-            )
-        }
+        CodeTerminalEditor(
+            code = userCode,
+            onCodeChange = { viewModel.updateCode(it) },
+            onApplyCode = { viewModel.applyCodeToPreview() },
+            onOpenFullscreen = onOpenFullscreen
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
     }

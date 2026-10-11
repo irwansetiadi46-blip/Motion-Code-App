@@ -13,6 +13,16 @@ class ApiKeyRepository(context: Context) {
         private const val PREFS_NAME = "war_motion_api_prefs"
         private const val KEY_API_KEYS_JSON = "api_keys_json"
         private const val KEY_ACTIVE_INDEX = "active_key_index"
+        private const val KEY_SELECTED_MODEL = "selected_gemini_model"
+        const val DEFAULT_MODEL = "gemini 3.1 flash lite"
+    }
+
+    fun getSelectedModel(): String {
+        return prefs.getString(KEY_SELECTED_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL
+    }
+
+    fun setSelectedModel(model: String) {
+        prefs.edit().putString(KEY_SELECTED_MODEL, model).apply()
     }
 
     init {

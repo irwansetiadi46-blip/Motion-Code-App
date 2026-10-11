@@ -1,9 +1,14 @@
 package com.example.model
 
+import java.util.UUID
+
 data class VideoMetadata(
+    val filename: String = "",
     val title: String = "",
     val description: String = "",
-    val keywords: String = ""
+    val keywords: String = "",
+    val id: String = UUID.randomUUID().toString(),
+    val createdAtMillis: Long = System.currentTimeMillis()
 ) {
     /**
      * Parses comma-separated keywords into a cleaned list of individual lowercase keywords.
@@ -27,17 +32,22 @@ data class VideoMetadata(
     /**
      * Formats metadata as a standard CSV string row for microstock platforms.
      */
-    fun toCsvRow(filename: String = "video.mp4"): String {
+    fun toCsvRow(defaultFilename: String = "video.mp4"): String {
+        val chosenFilename = if (filename.isNotBlank()) {
+            if (!filename.endsWith(".mp4", ignoreCase = true)) "$filename.mp4" else filename
+        } else {
+            defaultFilename
+        }
+        val safeFilename = escapeCsv(chosenFilename)
         val safeTitle = escapeCsv(title)
         val safeDesc = escapeCsv(description)
         val safeKeywords = escapeCsv(cleanKeywordsString())
-        val safeFilename = escapeCsv(filename)
         return "$safeFilename,$safeTitle,$safeDesc,$safeKeywords"
     }
 
-    fun toFullCsv(filename: String = "video.mp4"): String {
+    fun toFullCsv(defaultFilename: String = "video.mp4"): String {
         val header = "Filename,Title,Description,Keywords"
-        return "$header\n${toCsvRow(filename)}"
+        return "$header\n${toCsvRow(defaultFilename)}"
     }
 
     private fun escapeCsv(value: String): String {
@@ -47,6 +57,10 @@ data class VideoMetadata(
 }
 
 data class MetadataValidationReport(
+    val filenameWordCount: Int,
+    val isFilenameValid: Boolean,
+    val filenameMessage: String,
+
     val titleLength: Int,
     val titleWordCount: Int,
     val isTitleValid: Boolean,

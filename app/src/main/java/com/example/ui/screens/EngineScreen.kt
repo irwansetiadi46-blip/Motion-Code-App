@@ -76,6 +76,7 @@ fun EngineScreen(
     val context = LocalContext.current
     val apiKeys by viewModel.userApiKeys.collectAsState()
     val activeIndex by viewModel.activeApiKeyIndex.collectAsState()
+    val selectedModel by viewModel.selectedGeminiModel.collectAsState()
 
     var inputKey by remember { mutableStateOf("") }
     var revealedIndices by remember { mutableStateOf(setOf<Int>()) }
@@ -143,6 +144,152 @@ fun EngineScreen(
                             lineHeight = 16.sp
                         )
                     )
+                }
+            }
+        }
+
+        // Model Selector Container (Above Container Add Api Key)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = BorderStroke(1.5.dp, PurpleBorder)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Pilih Model Gemini",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0x3300E5FF),
+                        border = BorderStroke(1.dp, Color(0x6600E5FF))
+                    ) {
+                        Text(
+                            text = "Aktif: $selectedModel",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ElectricCyan
+                            )
+                        )
+                    }
+                }
+
+                val availableModels = listOf(
+                    Triple(
+                        "gemini 3.1 flash lite",
+                        "Ultra Cepat & Efisien",
+                        "Kecepatan tinggi, hemat kuota, ideal untuk generate metadata cepat."
+                    ),
+                    Triple(
+                        "gemini 3.5 Flash Lite",
+                        "Keseimbangan Cepat & Reasoning",
+                        "Optimasi pemahaman visual kode animasi dan logika kanvas."
+                    ),
+                    Triple(
+                        "gemini 3.6 Flash",
+                        "Analisis Mendalam & Presisi Tinggi",
+                        "Kecerdasan maksimal untuk kurasi metadata dan kata kunci komersial."
+                    )
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    availableModels.forEach { (modelName, badge, description) ->
+                        val isSelected = selectedModel.equals(modelName, ignoreCase = true)
+                        val itemBorder = if (isSelected) {
+                            BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(ElectricCyan, SkyGlow)))
+                        } else {
+                            BorderStroke(1.dp, DarkBorder.copy(alpha = 0.6f))
+                        }
+                        val itemBg = if (isSelected) Color(0x330284C7) else Color(0x331E293B)
+
+                        Surface(
+                            onClick = {
+                                viewModel.selectGeminiModel(modelName)
+                                Toast.makeText(context, "Model diubah ke $modelName", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = itemBg,
+                            border = itemBorder,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = {
+                                        viewModel.selectGeminiModel(modelName)
+                                        Toast.makeText(context, "Model diubah ke $modelName", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = RadioButtonDefaults.colors(
+                                        selectedColor = ElectricCyan,
+                                        unselectedColor = Color(0xFF64748B)
+                                    )
+                                )
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = modelName,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White else Color(0xFFCBD5E1)
+                                            )
+                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (isSelected) Color(0x3338BDF8) else Color(0x2264748B)
+                                        ) {
+                                            Text(
+                                                text = badge,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 10.sp,
+                                                    color = if (isSelected) SkyGlow else Color(0xFF94A3B8)
+                                                )
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = description,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = Color(0xFF94A3B8),
+                                            fontSize = 11.5.sp,
+                                            lineHeight = 15.sp
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

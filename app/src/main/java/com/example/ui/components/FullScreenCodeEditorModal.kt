@@ -1,6 +1,8 @@
 package com.example.ui.components
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -9,27 +11,42 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,8 +56,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -53,7 +75,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.ui.theme.ElectricCyan
+import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
+import com.example.ui.theme.TerminalBg
+import kotlinx.coroutines.launch
 
 @Composable
 fun FullScreenCodeEditorModal(
@@ -61,8 +86,16 @@ fun FullScreenCodeEditorModal(
     onCodeChange: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Initialize cursor at position 0 to avoid jumping to the end on first click
     var textFieldValue by remember {
-        mutableStateOf(TextFieldValue(code, TextRange(code.length)))
+        mutableStateOf(TextFieldValue(code, TextRange(0)))
     }
 
     LaunchedEffect(code) {
@@ -77,32 +110,57 @@ fun FullScreenCodeEditorModal(
 
     val editorVerticalScrollState = rememberScrollState()
     val editorHorizontalScrollState = rememberScrollState()
-
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val focusRequester = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
-    var isKeyboardActive by remember { mutableStateOf(false) }
-
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    var editorHeightPx by remember { mutableIntStateOf(0) }
 
-    val termuxKeys = listOf(
-        "ESC" to "",
-        "TAB" to "  ",
-        "{" to "{",
-        "}" to "}",
-        "(" to "(",
-        ")" to ")",
-        "[" to "[",
-        "]" to "]",
-        ";" to ";",
-        "=" to " = ",
-        "W" to "W",
-        "H" to "H",
-        "const" to "const ",
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val isKeyboardVisible = imeBottom > 0
+
+    // Snippets Toolbar matching the mini Terminal exactly
+    val snippets = listOf(
+        "const " to "const ",
+        "let " to "let ",
+        "function" to "function () {\n  \n}",
         "ctx." to "ctx.",
         "Math." to "Math.",
-        "loop" to "function loop(t) {\n  requestAnimationFrame(loop);\n}\nrequestAnimationFrame(loop);"
+        "W, H" to "W, H",
+        "{ }" to "{\n  \n}",
+        "( )" to "( )",
+        "[ ]" to "[ ]",
+        ";" to ";",
+        "=>" to " => ",
+        "requestAnimationFrame" to "requestAnimationFrame(loop);",
+        "hsla" to "hsla(200, 100%, 60%, 0.8)",
+        "rgba" to "rgba(0, 0, 0, 0.2)"
     )
+
+    // Adjust scroll so pointer sits comfortably 2 lines above keyboard when active
+    fun adjustScrollForCursor(cursorPos: Int) {
+        val layout = textLayoutResult ?: return
+        if (editorHeightPx <= 0) return
+
+        val clampedOffset = cursorPos.coerceIn(0, textFieldValue.text.length)
+        val lineIndex = layout.getLineForOffset(clampedOffset)
+        val lineTopPx = layout.getLineTop(lineIndex)
+        val lineBottomPx = layout.getLineBottom(lineIndex)
+        val lineHeightPx = (lineBottomPx - lineTopPx).coerceAtLeast(30f)
+
+        // User requirement: Pointer stays two lines above the appearing keyboard
+        // Target Y inside viewport: viewport height minus 3 lines of margin
+        val targetLineYInViewport = (editorHeightPx - lineHeightPx * 3f).coerceAtLeast(lineHeightPx)
+        val desiredScrollY = (lineTopPx - targetLineYInViewport).coerceAtLeast(0f)
+
+        coroutineScope.launch {
+            editorVerticalScrollState.animateScrollTo(desiredScrollY.toInt())
+        }
+    }
+
+    LaunchedEffect(isKeyboardVisible) {
+        if (isKeyboardVisible) {
+            adjustScrollForCursor(textFieldValue.selection.start)
+        }
+    }
 
     BackHandler {
         onDismiss()
@@ -115,185 +173,237 @@ fun FullScreenCodeEditorModal(
             decorFitsSystemWindows = false
         )
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF000000))
+                .background(Color(0xFF030712))
                 .statusBarsPadding()
                 .navigationBarsPadding()
                 .imePadding()
+                .padding(8.dp)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = {
+                            // Tapping anywhere outside input fields clears pointer and hides keyboard
                             focusManager.clearFocus()
                             keyboardController?.hide()
-                            isKeyboardActive = false
                         }
                     )
                 }
         ) {
-            // Terminal Header with green dot indicator
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF0A0F1A))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            Card(
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = TerminalBg),
+                border = BorderStroke(1.5.dp, PurpleBorder)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(9.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF10B981))
-                    )
-                    Text(
-                        text = "Terminal",
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = Color.White
-                        )
-                    )
-                }
-
-                Surface(
-                    onClick = onDismiss,
-                    shape = RoundedCornerShape(4.dp),
-                    color = Color(0xFF1E293B)
-                ) {
-                    Text(
-                        text = "[ESC]",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        style = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            color = Color(0xFFE2E8F0)
-                        )
-                    )
-                }
-            }
-
-            // Quick Keys toolbar
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF0A0E17))
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                termuxKeys.forEach { (label, insertText) ->
-                    Surface(
-                        onClick = {
-                            if (label == "ESC") {
-                                onDismiss()
-                            } else {
-                                val currentVal = textFieldValue
-                                val sel = currentVal.selection
-                                val newText = currentVal.text.replaceRange(sel.start, sel.end, insertText)
-                                val newCursor = sel.start + insertText.length
-                                textFieldValue = TextFieldValue(newText, TextRange(newCursor))
-                                onCodeChange(newText)
-                            }
-                        },
-                        shape = RoundedCornerShape(3.dp),
-                        color = Color(0xFF161F30),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF24324D))
-                    ) {
-                        Text(
-                            text = label,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            style = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = if (label == "ESC") FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 11.sp,
-                                color = if (label == "ESC") Color(0xFFF43F5E) else SkyGlow
-                            )
-                        )
-                    }
-                }
-            }
-
-            // Pure Terminal Editor Area without line numbers
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .background(Color(0xFF000000))
-                    .verticalScroll(editorVerticalScrollState)
-                    .horizontalScroll(editorHorizontalScrollState)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-                    .pointerInput(Unit) {
-                        detectTapGestures(
-                            onTap = { tapOffset ->
-                                if (isKeyboardActive) {
-                                    keyboardController?.hide()
-                                    focusManager.clearFocus()
-                                    isKeyboardActive = false
-                                } else {
-                                    focusRequester.requestFocus()
-                                    keyboardController?.show()
-                                    isKeyboardActive = true
-
-                                    textLayoutResult?.let { layout ->
-                                        val offset = layout.getOffsetForPosition(tapOffset)
-                                        textFieldValue = textFieldValue.copy(
-                                            selection = TextRange(offset.coerceIn(0, textFieldValue.text.length))
-                                        )
-                                    }
-                                }
-                            }
-                        )
-                    }
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    BasicTextField(
-                        value = textFieldValue,
-                        onValueChange = {
-                            textFieldValue = it
-                            onCodeChange(it.text)
-                        },
-                        onTextLayout = { layoutResult ->
-                            textLayoutResult = layoutResult
-                        },
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Terminal Header: Same design, texts, and colors as Mini Terminal
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        textStyle = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.5.sp,
-                            lineHeight = 20.sp,
-                            color = Color(0xFFE2E8F0)
-                        ),
-                        cursorBrush = SolidColor(ElectricCyan),
-                        visualTransformation = JsSyntaxHighlighter,
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.None,
-                            autoCorrect = false
-                        )
-                    )
-
-                    Column {
-                        repeat(10) {
+                            .background(Color(0xFF0F172A))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        // Green dot indicator & Text "Terminal"
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(9.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981))
+                            )
                             Text(
-                                text = " ",
-                                style = TextStyle(
+                                text = "Terminal",
+                                style = MaterialTheme.typography.labelMedium.copy(
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.5.sp,
-                                    lineHeight = 20.sp,
-                                    color = Color.Transparent
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
                                 )
                             )
                         }
+
+                        // Header Action Buttons matching Mini Terminal
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // Exit Fullscreen mode button
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FullscreenExit,
+                                    contentDescription = "Keluar Fullscreen",
+                                    tint = Color(0xFF94A3B8),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            // Salin Kode
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(textFieldValue.text))
+                                    Toast.makeText(context, "Kode disalin", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Salin Kode",
+                                    tint = Color(0xFF94A3B8),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+
+                            // Tempel Kode
+                            IconButton(
+                                onClick = {
+                                    val clip = clipboardManager.getText()?.text
+                                    if (!clip.isNullOrEmpty()) {
+                                        textFieldValue = TextFieldValue(clip, TextRange(clip.length))
+                                        onCodeChange(clip)
+                                        Toast.makeText(context, "Kode ditempel", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentPaste,
+                                    contentDescription = "Tempel Kode",
+                                    tint = Color(0xFF94A3B8),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+
+                            // Bersihkan Editor
+                            IconButton(
+                                onClick = {
+                                    textFieldValue = TextFieldValue("", TextRange(0))
+                                    onCodeChange("")
+                                    Toast.makeText(context, "Editor dibersihkan", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Bersihkan",
+                                    tint = Color(0xFFF43F5E),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Quick Snippets Toolbar matching Mini Terminal exactly
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF070B12))
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        snippets.forEach { (label, insertText) ->
+                            Surface(
+                                onClick = {
+                                    val currentVal = textFieldValue
+                                    val sel = currentVal.selection
+                                    val newText = currentVal.text.replaceRange(sel.start, sel.end, insertText)
+                                    val newCursor = sel.start + insertText.length
+                                    textFieldValue = TextFieldValue(newText, TextRange(newCursor))
+                                    onCodeChange(newText)
+                                },
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFF1E293B),
+                                border = BorderStroke(1.dp, Color(0xFF334155))
+                            ) {
+                                Text(
+                                    text = label,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        color = SkyGlow
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    // Terminal Code Text Area with Smart Cursor Positioning (2 lines above keyboard)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .background(TerminalBg)
+                            .onGloballyPositioned { coordinates ->
+                                editorHeightPx = coordinates.size.height
+                            }
+                            .verticalScroll(editorVerticalScrollState)
+                            .horizontalScroll(editorHorizontalScrollState)
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = { tapOffset ->
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+
+                                        textLayoutResult?.let { layout ->
+                                            val offset = layout.getOffsetForPosition(tapOffset)
+                                            val clamped = offset.coerceIn(0, textFieldValue.text.length)
+                                            textFieldValue = textFieldValue.copy(
+                                                selection = TextRange(clamped)
+                                            )
+                                            adjustScrollForCursor(clamped)
+                                        }
+                                    }
+                                )
+                            }
+                    ) {
+                        if (textFieldValue.text.isEmpty()) {
+                            Text(
+                                text = "// Tulis atau paste kode animasi canvas di sini...\n// Contoh: c.getContext('2d');\n// Wajib ada loop animasi.",
+                                style = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    lineHeight = 18.sp,
+                                    color = Color(0xFF475569)
+                                )
+                            )
+                        }
+
+                        BasicTextField(
+                            value = textFieldValue,
+                            onValueChange = { newValue ->
+                                textFieldValue = newValue
+                                onCodeChange(newValue.text)
+                            },
+                            onTextLayout = { layout ->
+                                textLayoutResult = layout
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                            textStyle = TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                                color = Color(0xFFE2E8F0)
+                            ),
+                            cursorBrush = SolidColor(ElectricCyan),
+                            visualTransformation = JsSyntaxHighlighter,
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.None,
+                                autoCorrect = false
+                            )
+                        )
                     }
                 }
             }

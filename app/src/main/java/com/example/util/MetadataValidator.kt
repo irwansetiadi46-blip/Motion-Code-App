@@ -5,6 +5,8 @@ import com.example.model.VideoMetadata
 
 object MetadataValidator {
 
+    const val FILENAME_MAX_WORDS = 5
+
     const val TITLE_MAX_CHARS = 100
     const val TITLE_MIN_WORDS = 5
 
@@ -14,7 +16,21 @@ object MetadataValidator {
     const val KEYWORDS_MIN = 30
     const val KEYWORDS_MAX = 49
 
+    fun getFilenameWordCount(filename: String): Int {
+        val trimmed = filename.trim()
+        return if (trimmed.isEmpty()) 0 else trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+    }
+
     fun validate(metadata: VideoMetadata): MetadataValidationReport {
+        // 0. Filename Validation
+        val filenameWords = getFilenameWordCount(metadata.filename)
+        val isFilenameValid = filenameWords in 1..FILENAME_MAX_WORDS || metadata.filename.isBlank()
+        val filenameMessage = when {
+            metadata.filename.isBlank() -> "Filename opsional (otomatis saat render / generate, max $FILENAME_MAX_WORDS kata)"
+            filenameWords > FILENAME_MAX_WORDS -> "Filename terlalu panjang: $filenameWords / $FILENAME_MAX_WORDS kata max"
+            else -> "Filename valid ($filenameWords/$FILENAME_MAX_WORDS kata)"
+        }
+
         // 1. Title Validation
         val trimmedTitle = metadata.title.trim()
         val titleWords = if (trimmedTitle.isEmpty()) emptyList() else trimmedTitle.split(Regex("\\s+")).filter { it.isNotBlank() }
@@ -77,6 +93,9 @@ object MetadataValidator {
         val isAllValid = isTitleValid && isDescValid && isKeywordsValid
 
         return MetadataValidationReport(
+            filenameWordCount = filenameWords,
+            isFilenameValid = isFilenameValid,
+            filenameMessage = filenameMessage,
             titleLength = titleLength,
             titleWordCount = titleWordCount,
             isTitleValid = isTitleValid,
@@ -100,7 +119,7 @@ object MetadataValidator {
      */
     fun cleanAndDeduplicateKeywords(raw: String): String {
         return raw.split(",")
-            .map { it.trim().lowercase() }
+            .map { it.trim().lowercase().filter { ch -> ch.isLetterOrDigit() || ch == ' ' || ch == '-' } }
             .filter { it.isNotEmpty() }
             .distinct()
             .joinToString(", ")

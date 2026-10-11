@@ -3,6 +3,7 @@ package com.example.ui.components
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,7 +70,7 @@ fun CodeTerminalEditor(
     val clipboardManager = LocalClipboardManager.current
 
     var textFieldValue by remember {
-        mutableStateOf(TextFieldValue(code, TextRange(code.length)))
+        mutableStateOf(TextFieldValue(code, TextRange(0)))
     }
 
     LaunchedEffect(code) {
@@ -241,11 +242,15 @@ fun CodeTerminalEditor(
             }
 
             // Code text area without line numbers gutter (clean & spacious)
+            val miniVerticalScroll = rememberScrollState()
+            val miniHorizontalScroll = rememberScrollState()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(260.dp)
                     .background(TerminalBg)
+                    .verticalScroll(miniVerticalScroll)
+                    .horizontalScroll(miniHorizontalScroll)
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 if (textFieldValue.text.isEmpty()) {
