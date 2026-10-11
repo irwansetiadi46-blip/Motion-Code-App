@@ -251,44 +251,49 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                     }
 
                     is BridgeEvent.Success -> {
+                        var videoFile = event.videoFile
+                        val currentMeta = _currentMetadata.value
+                        val metaFilename = currentMeta.filename.trim()
+                        if (metaFilename.isNotBlank()) {
+                            val renamed = storageManager.renameVideoFile(videoFile, metaFilename)
+                            if (renamed != null) {
+                                videoFile = renamed
+                            }
+                        }
+
                         val saved = SavedVideo(
-                            id = event.videoFile.nameWithoutExtension,
-                            file = event.videoFile,
-                            title = event.videoFile.name,
+                            id = videoFile.nameWithoutExtension,
+                            file = videoFile,
+                            title = videoFile.name,
                             width = event.width,
                             height = event.height,
                             durationSeconds = event.durationSec,
-                            fileSizeBytes = event.fileSizeBytes,
+                            fileSizeBytes = videoFile.length(),
                             createdAtMillis = System.currentTimeMillis()
                         )
 
                         _renderState.value = RenderState.Success(
-                            videoFile = event.videoFile,
+                            videoFile = videoFile,
                             width = event.width,
                             height = event.height,
                             durationSeconds = event.durationSec,
-                            fileSizeBytes = event.fileSizeBytes
+                            fileSizeBytes = videoFile.length()
                         )
 
                         _lastRenderedVideo.value = saved
                         _selectedVideoForPlayback.value = saved
 
                         // Persist metadata alongside newly rendered video
-                        storageManager.saveVideoMetadata(event.videoFile, _currentMetadata.value)
+                        storageManager.saveVideoMetadata(videoFile, _currentMetadata.value)
                         _videoMetadataMap.update { map ->
                             map + (saved.id to _currentMetadata.value)
-                        }
-
-                        // Video hasil render otomatis tersimpan di galeri perangkat
-                        viewModelScope.launch {
-                            storageManager.saveToDeviceGallery(saved.file)
                         }
 
                         loadSavedVideos()
 
                         Toast.makeText(
                             getApplication(),
-                            "✅ Render Selesai! Video otomatis tersimpan di Galeri & Preview MP4 ditampilkan di bawah.",
+                            "✅ Render Selesai! Preview MP4 ditampilkan di bawah.",
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -630,6 +635,13 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
 
     fun updateCurrentMetadata(metadata: VideoMetadata) {
         _currentMetadata.value = metadata
+        val curVideo = _selectedVideoForPlayback.value
+        if (curVideo != null) {
+            _videoMetadataMap.update { map ->
+                map + (curVideo.id to metadata)
+            }
+            storageManager.saveVideoMetadata(curVideo.file, metadata)
+        }
     }
 
     fun updateMetadataForVideo(videoId: String, metadata: VideoMetadata, videoFile: File? = null) {
@@ -667,24 +679,60 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
 
     fun selectVideoForPlayback(video: SavedVideo?) {
         _selectedVideoForPlayback.value = video
+        if (video != null) {
+            val meta = _videoMetadataMap.value[video.id]
+                ?: storageManager.loadVideoMetadata(video.file)
+                ?: VideoMetadata(filename = video.file.nameWithoutExtension, title = video.title)
+            _currentMetadata.value = meta
+        }
     }
 
     /**
-     * Downloads video MP4 into "Download/Code Motion Video" folder
+     * Downloads exactly 1 video MP4 into "Download/Code Motion Video" folder
      * with live progress indicator, spinner, and percentage.
-     * Uses generated metadata filename as default, or fallback to Vid-WM.mp4 if blank.
+     * Automatically renames the video file to match EXACTLY what is in the "File Name"
+     * textarea input in Metadata, with fallback to "Vid-WM.mp4".
      */
     fun downloadVideo(video: SavedVideo) {
-        val meta = _videoMetadataMap.value[video.id] ?: _currentMetadata.value
-        val rawBaseName = if (meta.filename.isNotBlank()) {
-            meta.filename.trim()
-        } else if (!video.file.nameWithoutExtension.startsWith("codemotion_")) {
-            video.file.nameWithoutExtension
-        } else {
-            "Vid-WM"
+        // Ambil nama file langsung dari textarea input File Name di bagian Metadata
+        val textareaFilename = _currentMetadata.value.filename.trim()
+        val mappedFilename = _videoMetadataMap.value[video.id]?.filename?.trim() ?: ""
+        val rawBaseName = when {
+            textareaFilename.isNotBlank() -> textareaFilename
+            mappedFilename.isNotBlank() -> mappedFilename
+            else -> "Vid-WM"
         }
-        val safeBaseName = rawBaseName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-        val targetFilename = if (!safeBaseName.endsWith(".mp4", ignoreCase = true)) "$safeBaseName.mp4" else safeBaseName
+
+        val cleanBaseName = rawBaseName.removeSuffix(".mp4").removeSuffix(".MP4").trim()
+        val safeBaseName = cleanBaseName.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Vid-WM" }
+        val targetFilename = "$safeBaseName.mp4"
+
+        // Auto rename file MP4 hasil render agar nama file fisik sama persis dengan textarea input File Name
+        val currentVideoFile = video.file
+        val renamedFile = if (currentVideoFile.exists()) {
+            storageManager.renameVideoFile(currentVideoFile, safeBaseName) ?: currentVideoFile
+        } else {
+            currentVideoFile
+        }
+
+        val updatedVideo = video.copy(
+            id = renamedFile.nameWithoutExtension,
+            file = renamedFile,
+            title = targetFilename
+        )
+
+        _selectedVideoForPlayback.value = updatedVideo
+        if (_lastRenderedVideo.value?.id == video.id || _lastRenderedVideo.value?.file?.name == currentVideoFile.name) {
+            _lastRenderedVideo.value = updatedVideo
+        }
+
+        val updatedMetadata = _currentMetadata.value.copy(filename = safeBaseName)
+        _currentMetadata.value = updatedMetadata
+        _videoMetadataMap.update { map ->
+            map + (updatedVideo.id to updatedMetadata)
+        }
+        storageManager.saveVideoMetadata(renamedFile, updatedMetadata)
+        loadSavedVideos()
 
         viewModelScope.launch {
             _downloadState.value = DownloadState.Downloading(
@@ -693,7 +741,7 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                 message = "Memulai proses download $targetFilename..."
             )
 
-            val uri = storageManager.downloadToCodeMotionFolder(video.file, targetFilename) { progress ->
+            val uri = storageManager.downloadToCodeMotionFolder(renamedFile, targetFilename) { progress ->
                 val pct = (progress * 100).toInt().coerceIn(0, 100)
                 _downloadState.value = DownloadState.Downloading(
                     progress = progress,

@@ -276,7 +276,7 @@ fun ExportScreen(
                 viewModel.cancelMetadataGeneration()
             },
             isGenerating = isGeneratingMetadata,
-            videoFilename = selectedVideo?.file?.name ?: "code_motion_video.mp4"
+            videoFilename = selectedVideo?.file?.name ?: "Vid-WM.mp4"
         )
 
         Spacer(modifier = Modifier.height(24.dp))

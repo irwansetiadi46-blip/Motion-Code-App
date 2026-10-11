@@ -86,7 +86,7 @@ class VideoStorageManager(private val context: Context) {
         try {
             if (!oldFile.exists()) return null
             val rawName = newNameWithoutExtension.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_")
-            val cleanName = if (rawName.isBlank()) "Vid-WM" else rawName.removeSuffix(".mp4").removeSuffix(".MP4")
+            val cleanName = if (rawName.isBlank()) "Vid-WM" else rawName.removeSuffix(".mp4").removeSuffix(".MP4").trim()
             val targetFile = File(videoDir, "$cleanName.mp4")
 
             if (oldFile.absolutePath == targetFile.absolutePath) {
@@ -98,7 +98,15 @@ class VideoStorageManager(private val context: Context) {
                 targetFile.delete()
             }
 
-            val success = oldFile.renameTo(targetFile)
+            var success = oldFile.renameTo(targetFile)
+            if (!success) {
+                try {
+                    oldFile.copyTo(targetFile, overwrite = true)
+                    oldFile.delete()
+                    success = true
+                } catch (_: Exception) {}
+            }
+
             if (success) {
                 // Also rename metadata JSON if present
                 val oldMeta = File(videoDir, "${oldFile.nameWithoutExtension}.meta.json")
@@ -116,7 +124,7 @@ class VideoStorageManager(private val context: Context) {
     }
 
     /**
-     * Downloads video MP4 into device's local memory at "Download/Code Motion Video" folder.
+     * Downloads exactly 1 video MP4 file into device's local memory at "Download/Code Motion Video" folder.
      * Reports simulated/actual chunk transfer progress (0.0 .. 1.0) for visual feedback.
      */
     suspend fun downloadToCodeMotionFolder(
@@ -140,72 +148,91 @@ class VideoStorageManager(private val context: Context) {
                 val safe = rawTarget.replace(Regex("[\\\\/:*?\"<>|]"), "_")
                 if (!safe.endsWith(".mp4", ignoreCase = true)) "$safe.mp4" else safe
             } else {
-                videoFile.name
+                if (videoFile.name.endsWith(".mp4", ignoreCase = true)) videoFile.name else "${videoFile.name}.mp4"
             }
 
-            // 1. Ensure physical fallback directory exists
-            try {
-                val publicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Code Motion Video")
-                if (!publicDir.exists()) publicDir.mkdirs()
-                val fallbackFile = File(publicDir, finalFilename)
-                FileOutputStream(fallbackFile).use { fos ->
-                    FileInputStream(videoFile).use { fis ->
-                        fis.copyTo(fos)
-                    }
-                }
-            } catch (e: Exception) {
-                // Ignore fallback creation error on newer Android scoped storage
-            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val collectionUri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                // Delete previous entry with the exact same display name if it already exists so MediaStore does not create a duplicate "(1)"
+                try {
+                    val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+                    val selectionArgs = arrayOf(finalFilename, "$folderRelativePath%")
+                    resolver.delete(collectionUri, selection, selectionArgs)
+                } catch (_: Exception) {}
 
-            // 2. Prepare MediaStore entry
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, finalFilename)
-                put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-                put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, finalFilename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+                    put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
                     put(MediaStore.MediaColumns.RELATIVE_PATH, folderRelativePath)
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
-            }
 
-            val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-            } else {
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-            }
+                val targetUri = resolver.insert(collectionUri, contentValues) ?: return@withContext null
 
-            val targetUri = resolver.insert(collectionUri, contentValues) ?: return@withContext null
+                resolver.openOutputStream(targetUri)?.use { outputStream ->
+                    FileInputStream(videoFile).use { inputStream ->
+                        val buffer = ByteArray(64 * 1024)
+                        var bytesCopied = 0L
+                        var read: Int
 
-            // 3. Stream bytes with progress reporting
-            resolver.openOutputStream(targetUri)?.use { outputStream ->
-                FileInputStream(videoFile).use { inputStream ->
-                    val buffer = ByteArray(64 * 1024)
-                    var bytesCopied = 0L
-                    var read: Int
+                        onProgress(0.05f)
 
-                    onProgress(0.05f)
-
-                    while (inputStream.read(buffer).also { read = it } != -1) {
-                        outputStream.write(buffer, 0, read)
-                        bytesCopied += read
-                        val progress = (bytesCopied.toFloat() / totalBytes.toFloat()).coerceIn(0.05f, 0.98f)
-                        onProgress(progress)
-                        // Smooth pacing for small files so user perceives download feedback
-                        delay(12)
+                        while (inputStream.read(buffer).also { read = it } != -1) {
+                            outputStream.write(buffer, 0, read)
+                            bytesCopied += read
+                            val progress = (bytesCopied.toFloat() / totalBytes.toFloat()).coerceIn(0.05f, 0.98f)
+                            onProgress(progress)
+                            delay(12)
+                        }
+                        outputStream.flush()
                     }
-                    outputStream.flush()
                 }
-            }
 
-            // 4. Mark complete on Android Q+
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 contentValues.clear()
                 contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 resolver.update(targetUri, contentValues, null, null)
-            }
 
-            onProgress(1.0f)
-            targetUri
+                onProgress(1.0f)
+                return@withContext targetUri
+            } else {
+                // Pre-Android Q: Save directly to Download/Code Motion Video folder (single file only)
+                val publicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Code Motion Video")
+                if (!publicDir.exists()) publicDir.mkdirs()
+                val targetFile = File(publicDir, finalFilename)
+                if (targetFile.exists()) {
+                    targetFile.delete()
+                }
+
+                FileOutputStream(targetFile).use { outputStream ->
+                    FileInputStream(videoFile).use { inputStream ->
+                        val buffer = ByteArray(64 * 1024)
+                        var bytesCopied = 0L
+                        var read: Int
+
+                        onProgress(0.05f)
+
+                        while (inputStream.read(buffer).also { read = it } != -1) {
+                            outputStream.write(buffer, 0, read)
+                            bytesCopied += read
+                            val progress = (bytesCopied.toFloat() / totalBytes.toFloat()).coerceIn(0.05f, 0.98f)
+                            onProgress(progress)
+                            delay(12)
+                        }
+                        outputStream.flush()
+                    }
+                }
+
+                android.media.MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(targetFile.absolutePath),
+                    arrayOf("video/mp4"),
+                    null
+                )
+
+                onProgress(1.0f)
+                return@withContext Uri.fromFile(targetFile)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             null

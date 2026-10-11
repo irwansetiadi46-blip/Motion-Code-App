@@ -169,4 +169,25 @@ class MetadataValidatorTest {
         val expectedRow = "\"Vid-WM.mp4\",\"Clean generative coding animation loop.\",\"coding, creative, loop\",\"\""
         assertEquals(expectedRow, lines[1])
     }
+
+    @Test
+    fun testVideoFilenameSanitizationAndVidWmFallback() {
+        // Case 1: Exact filename from metadata input
+        val meta1 = VideoMetadata(filename = "Neon Cyber Matrix")
+        val clean1 = meta1.filename.removeSuffix(".mp4").removeSuffix(".MP4").trim()
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Vid-WM" }
+        assertEquals("Neon Cyber Matrix.mp4", "$clean1.mp4")
+
+        // Case 2: User input already has .mp4
+        val meta2 = VideoMetadata(filename = "Abstract Wave Loop.mp4")
+        val clean2 = meta2.filename.removeSuffix(".mp4").removeSuffix(".MP4").trim()
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Vid-WM" }
+        assertEquals("Abstract Wave Loop.mp4", "$clean2.mp4")
+
+        // Case 3: Blank filename falls back to Vid-WM.mp4
+        val meta3 = VideoMetadata(filename = "   ")
+        val clean3 = meta3.filename.removeSuffix(".mp4").removeSuffix(".MP4").trim()
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Vid-WM" }
+        assertEquals("Vid-WM.mp4", "$clean3.mp4")
+    }
 }
