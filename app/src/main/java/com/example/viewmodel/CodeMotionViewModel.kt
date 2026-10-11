@@ -231,7 +231,7 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
 
     fun getOrCreateEngineWebView(context: android.content.Context): WebView {
         _engineWebView?.let { return it }
-        val wv = WebView(context.applicationContext).apply {
+        val wv = WebView(context).apply {
             layoutParams = android.view.ViewGroup.LayoutParams(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT

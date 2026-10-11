@@ -572,27 +572,26 @@ window.startVideoRender = async function() {
       else if (mbPerSec <= 522240) level = '2a'; // 4.2
       else if (mbPerSec <= 983040) level = '33'; // 5.1
       else level = '34'; // 5.2
-      return 'avc1.6400' + level;
+      return 'avc1.4200' + level;
     }
 
     let config = {
       codec: pickCodec(TARGET_W, TARGET_H, FPS),
       width: TARGET_W,
       height: TARGET_H,
-      bitrate: Math.min(Math.max(Number(BITRATE) || 8000000, 100000), 50000000),
+      bitrate: Math.min(Math.max(Number(BITRATE) || 8000000, 100000), 25000000),
       framerate: FPS,
-      latencyMode: 'quality'
+      latencyMode: 'realtime'
     };
 
-    // Find supported codec config across high/main/baseline
+    // Find supported codec config across baseline/main/high
     let isSupported = false;
     const candidates = [
       config.codec,
-      'avc1.64002a',
-      'avc1.4d002a',
       'avc1.42001f',
-      'avc1.4d0034',
-      'avc1.640034'
+      'avc1.420028',
+      'avc1.4d002a',
+      'avc1.64002a'
     ];
 
     for (const cand of candidates) {
@@ -607,7 +606,6 @@ window.startVideoRender = async function() {
     }
 
     if (!isSupported) {
-      config.latencyMode = 'realtime';
       config.codec = 'avc1.42001f';
       const support = await VideoEncoder.isConfigSupported(config);
       if (!support || !support.supported) {
@@ -624,22 +622,6 @@ window.startVideoRender = async function() {
     });
     encoder.configure(config);
     window.__CURRENT_ENCODER__ = encoder;
-
-    function yieldMacroTask() {
-      return new Promise(function(resolve) {
-        if (typeof MessageChannel !== 'undefined') {
-          var ch = new MessageChannel();
-          ch.port1.onmessage = function() {
-            try { ch.port1.close(); } catch(e) {}
-            try { ch.port2.close(); } catch(e) {}
-            resolve();
-          };
-          ch.port2.postMessage(null);
-        } else {
-          setTimeout(resolve, 0);
-        }
-      });
-    }
 
     const harness = iwin.__HARNESS__;
     const dt = 1000 / FPS;
@@ -665,22 +647,24 @@ window.startVideoRender = async function() {
       encoder.encode(frame, { keyFrame: (i % keyFrameInterval === 0) });
       frame.close();
 
-      if (i % 2 === 0 || i === totalFrames - 1) {
+      if (i % 4 === 0 || i === totalFrames - 1) {
         const prog = (i + 1) / totalFrames;
         const pct = Math.round(prog * 100);
         postProgress(i + 1, totalFrames, prog, "Merender frame " + (i + 1) + "/" + totalFrames + " (" + pct + "%)");
-        await yieldMacroTask();
+        await new Promise(r => setTimeout(r, 1));
+      } else {
+        await new Promise(r => setTimeout(r, 0));
       }
 
-      // Keep encode queue bounded
+      // Keep encode queue bounded without CPU blocking
       let waitCount = 0;
-      while (encoder.encodeQueueSize > 2 && waitCount < 50) {
+      while (encoder.encodeQueueSize > 5 && waitCount < 30) {
         if (window.__IS_RENDER_CANCELLED__) {
           try { encoder.close(); } catch (e) {}
           window.__CURRENT_ENCODER__ = null;
           return;
         }
-        await yieldMacroTask();
+        await new Promise(r => setTimeout(r, 4));
         waitCount++;
         if (encoderError) throw encoderError;
       }
@@ -724,7 +708,7 @@ window.startVideoRender = async function() {
         window.AndroidBridge.onChunkStream(b64);
       }
       if (offset % (CHUNK_SIZE * 4) === 0) {
-        await yieldMacroTask();
+        await new Promise(r => setTimeout(r, 0));
       }
     }
 

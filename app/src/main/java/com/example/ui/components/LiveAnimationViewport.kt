@@ -98,16 +98,10 @@ fun LiveAnimationViewport(
                     ): Boolean {
                         android.util.Log.w(
                             "LiveAnimationViewport",
-                            "Chromium renderer process gone detected. Recovering automatically..."
+                            "Chromium renderer process gone detected. Recovering..."
                         )
                         try {
-                            onWebViewDisposed?.invoke()
                             (view?.parent as? ViewGroup)?.removeView(view)
-                            view?.stopLoading()
-                            view?.webChromeClient = null
-                            view?.webViewClient = WebViewClient()
-                            view?.removeJavascriptInterface("AndroidBridge")
-                            view?.removeAllViews()
                             view?.destroy()
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -125,7 +119,7 @@ fun LiveAnimationViewport(
         }
 
         // Full load whenever resolution, fps, duration, or bitrate changes
-        // PENTING: Jangan reload HTML saat sedang proses render aktif!
+        // JANGAN reload data jika sedang rendering aktif agar tidak mengganggu/menghentikan render
         LaunchedEffect(
             renderConfig.resolution,
             renderConfig.fps,
@@ -139,7 +133,6 @@ fun LiveAnimationViewport(
         }
 
         // Fast, flicker-free live code reload whenever reloadTrigger updates
-        // PENTING: Jangan reload saat sedang proses render aktif!
         LaunchedEffect(reloadTrigger) {
             if (reloadTrigger > 0L && !isRendering) {
                 try {
@@ -157,18 +150,16 @@ fun LiveAnimationViewport(
         DisposableEffect(webView) {
             onDispose {
                 try {
-                    // Lepaskan dari ViewGroup container tanpa mematikan WebView agar proses render tetap berjalan
+                    onWebViewDisposed?.invoke()
                     (webView.parent as? ViewGroup)?.removeView(webView)
+                    // HANYA destroy jika WebView ini bukan shared engineWebView dari ViewModel
                     if (engineWebView == null) {
-                        onWebViewDisposed?.invoke()
                         webView.stopLoading()
                         webView.webChromeClient = null
                         webView.webViewClient = WebViewClient()
                         webView.removeJavascriptInterface("AndroidBridge")
                         webView.removeAllViews()
                         webView.destroy()
-                    } else if (!isRendering) {
-                        onWebViewDisposed?.invoke()
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()

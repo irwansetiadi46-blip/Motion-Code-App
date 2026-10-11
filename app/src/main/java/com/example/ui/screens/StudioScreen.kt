@@ -130,7 +130,7 @@ fun StudioScreen(
             reloadTrigger = reloadTrigger,
             onWebViewReady = onWebViewReady,
             onWebViewDisposed = {
-                viewModel.bindWebView(null)
+                // Keep engine webview alive during tab switch
             },
             title = "VIEWPORT ANIMASI",
             isRendering = isRendering,

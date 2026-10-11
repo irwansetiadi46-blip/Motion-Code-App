@@ -117,7 +117,7 @@ fun ExportScreen(
                 viewModel.bindWebView(wv)
             },
             onWebViewDisposed = {
-                viewModel.bindWebView(null)
+                // Keep engine webview alive during tab switch
             },
             title = "REAL-TIME ANIMATION VIEWPORT",
             isRendering = isRendering,
