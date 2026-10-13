@@ -1058,4 +1058,21 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
             Toast.makeText(getApplication(), "Video dihapus", Toast.LENGTH_SHORT).show()
         }
     }
+
+    fun deleteImage(image: SavedImage) {
+        viewModelScope.launch {
+            try {
+                if (image.file.exists()) {
+                    image.file.delete()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            if (_lastRenderedImage.value?.id == image.id) {
+                _lastRenderedImage.value = null
+            }
+            _renderState.value = RenderState.Idle
+            Toast.makeText(getApplication(), "Hasil render gambar dihapus", Toast.LENGTH_SHORT).show()
+        }
+    }
 }

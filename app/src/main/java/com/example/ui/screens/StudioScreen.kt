@@ -483,7 +483,7 @@ fun StudioScreen(
                 selectedFormat = selectedImageFormat,
                 onFormatChange = { viewModel.setImageFormat(it) },
                 onExport = { viewModel.downloadImage(lastRenderedImage!!) },
-                onDelete = { viewModel.cancelOrDismissRenderState() }
+                onDelete = { viewModel.deleteImage(lastRenderedImage!!) }
             )
         } else if (outputMode == OutputMode.VIDEOS && lastRenderedVideo != null) {
             VideoPlayerView(
