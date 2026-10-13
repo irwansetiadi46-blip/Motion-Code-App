@@ -190,4 +190,47 @@ class MetadataValidatorTest {
             .replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Vid-WM" }
         assertEquals("Vid-WM.mp4", "$clean3.mp4")
     }
+
+    @Test
+    fun testOutputModeAndImageFormatProperties() {
+        assertEquals("Video", com.example.model.OutputMode.VIDEOS.cardLabel)
+        assertEquals("Videos", com.example.model.OutputMode.VIDEOS.displayName)
+        assertEquals("Images", com.example.model.OutputMode.IMAGES.cardLabel)
+        assertEquals("Images", com.example.model.OutputMode.IMAGES.displayName)
+
+        assertEquals("png", com.example.model.ImageFormat.PNG.extension)
+        assertEquals("image/png", com.example.model.ImageFormat.PNG.mimeType)
+        assertEquals("jpg", com.example.model.ImageFormat.JPG.extension)
+        assertEquals("image/jpeg", com.example.model.ImageFormat.JPG.mimeType)
+    }
+
+    @Test
+    fun testImageFilenameSanitizationAndImgWmFallback() {
+        val formatPng = com.example.model.ImageFormat.PNG
+        val formatJpg = com.example.model.ImageFormat.JPG
+
+        // Case 1: Custom filename from metadata
+        val raw1 = "Galaxy Nebula Background"
+        val clean1 = raw1.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .removeSuffix(".png").removeSuffix(".PNG")
+            .removeSuffix(".jpg").removeSuffix(".JPG").ifBlank { "Img-WM" }
+        assertEquals("Galaxy Nebula Background.png", "$clean1.${formatPng.extension}")
+        assertEquals("Galaxy Nebula Background.jpg", "$clean1.${formatJpg.extension}")
+
+        // Case 2: Custom filename with existing extension
+        val raw2 = "Abstract Art.png"
+        val clean2 = raw2.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .removeSuffix(".png").removeSuffix(".PNG")
+            .removeSuffix(".jpg").removeSuffix(".JPG").ifBlank { "Img-WM" }
+        assertEquals("Abstract Art.png", "$clean2.${formatPng.extension}")
+        assertEquals("Abstract Art.jpg", "$clean2.${formatJpg.extension}")
+
+        // Case 3: Blank filename fallback
+        val raw3 = "   "
+        val clean3 = raw3.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .removeSuffix(".png").removeSuffix(".PNG")
+            .removeSuffix(".jpg").removeSuffix(".JPG").ifBlank { "Img-WM" }
+        assertEquals("Img-WM.png", "$clean3.${formatPng.extension}")
+        assertEquals("Img-WM.jpg", "$clean3.${formatJpg.extension}")
+    }
 }

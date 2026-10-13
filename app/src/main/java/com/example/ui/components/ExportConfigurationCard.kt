@@ -44,6 +44,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Palette
+import com.example.model.ImageFormat
+import com.example.model.OutputMode
 import com.example.model.QualityBitrate
 import com.example.model.RenderConfig
 import com.example.model.VideoResolution
@@ -55,8 +60,10 @@ import com.example.ui.theme.PurpleBorder
 import com.example.ui.theme.SkyGlow
 
 /**
- * Container "Export Configuration" yang menggabungkan semua opsi export:
- * Resolusi, Durasi, FPS, dan Bitrate ke dalam format Dropdown.
+ * Container "Export Configuration" yang menyesuaikan mode aktif:
+ * - Mode Videos: Resolusi, Durasi, FPS, dan Bitrate ke dalam format Dropdown.
+ * - Mode Images: Resolusi Gambar (Minimal 4 Mega Pixel), Format File (JPG/PNG),
+ *   Latar Belakang & Transparansi, dan Kualitas Render ke dalam format Dropdown.
  */
 @Composable
 fun ExportConfigurationCard(
@@ -65,7 +72,10 @@ fun ExportConfigurationCard(
     onDurationChange: (Int) -> Unit,
     onFpsChange: (Int) -> Unit,
     onQualityChange: (QualityBitrate) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    outputMode: OutputMode = OutputMode.VIDEOS,
+    selectedImageFormat: ImageFormat = ImageFormat.PNG,
+    onImageFormatChange: (ImageFormat) -> Unit = {}
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -79,7 +89,7 @@ fun ExportConfigurationCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Header Container: Export Configuration
+            // Header Container: Export Configuration (Menyesuaikan Mode Videos / Images)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -93,7 +103,7 @@ fun ExportConfigurationCard(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Default.Tune,
+                            imageVector = if (outputMode == OutputMode.IMAGES) Icons.Default.Image else Icons.Default.Tune,
                             contentDescription = null,
                             tint = SkyGlow,
                             modifier = Modifier.size(20.dp)
@@ -103,14 +113,18 @@ fun ExportConfigurationCard(
 
                 Column {
                     Text(
-                        text = "Export Configuration",
+                        text = if (outputMode == OutputMode.IMAGES) "Image Export Configuration" else "Video Export Configuration",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     )
                     Text(
-                        text = "Konfigurasi resolusi, durasi, frame rate, dan bitrate",
+                        text = if (outputMode == OutputMode.IMAGES) {
+                            "Konfigurasi resolusi dan format file gambar"
+                        } else {
+                            "Konfigurasi resolusi video, durasi, frame rate, dan bitrate"
+                        },
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = Color(0xFF94A3B8),
                             fontSize = 11.sp
@@ -119,132 +133,195 @@ fun ExportConfigurationCard(
                 }
             }
 
-            // 1. Dropdown Resolusi Video
-            ConfigurationDropdown(
-                label = "Resolusi Video",
-                currentValue = renderConfig.resolution.label,
-                icon = Icons.Default.AspectRatio,
-                badge = "${renderConfig.resolution.width}x${renderConfig.resolution.height}"
-            ) { closeMenu ->
-                VideoResolution.ALL.forEach { res ->
-                    val isSelected = res.width == renderConfig.resolution.width &&
-                            res.height == renderConfig.resolution.height
-                    DropdownMenuItem(
-                        text = {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+            if (outputMode == OutputMode.IMAGES) {
+                // ==========================================
+                // PENGATURAN MINIMALIS MODE IMAGES
+                // ==========================================
+
+                // 1. Dropdown Resolusi Gambar
+                ConfigurationDropdown(
+                    label = "Resolusi Gambar",
+                    currentValue = renderConfig.resolution.imageLabel,
+                    icon = Icons.Default.AspectRatio
+                ) { closeMenu ->
+                    VideoResolution.IMAGE_RESOLUTIONS.forEach { res ->
+                        val isSelected = res.width == renderConfig.resolution.width &&
+                                res.height == renderConfig.resolution.height
+                        DropdownMenuItem(
+                            text = {
                                 Text(
-                                    text = res.label,
+                                    text = res.imageLabel,
                                     color = if (isSelected) SkyGlow else Color.White,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     fontSize = 13.sp
                                 )
-                                Text(
-                                    text = res.category.displayName.take(8),
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
+                            },
+                            onClick = {
+                                onResolutionChange(res)
+                                closeMenu()
                             }
-                        },
-                        onClick = {
-                            onResolutionChange(res)
-                            closeMenu()
-                        }
-                    )
-                }
-            }
-
-            // 2. Dropdown Durasi Video
-            val durationOptions = listOf(3, 5, 8, 10, 12, 15, 20, 25, 30)
-            ConfigurationDropdown(
-                label = "Durasi Video",
-                currentValue = "${renderConfig.durationSeconds} Detik",
-                icon = Icons.Default.Timer,
-                badge = "${renderConfig.totalFrames} Frames"
-            ) { closeMenu ->
-                durationOptions.forEach { dur ->
-                    val isSelected = dur == renderConfig.durationSeconds
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = "$dur Detik (${dur * renderConfig.fps} total frames)",
-                                color = if (isSelected) SkyGlow else Color.White,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 13.sp
-                            )
-                        },
-                        onClick = {
-                            onDurationChange(dur)
-                            closeMenu()
-                        }
-                    )
-                }
-            }
-
-            // 3. Dropdown FPS (Frame Rate)
-            val fpsOptions = listOf(24, 30, 60)
-            ConfigurationDropdown(
-                label = "Frame Rate (FPS)",
-                currentValue = "${renderConfig.fps} FPS",
-                icon = Icons.Default.Speed,
-                badge = when (renderConfig.fps) {
-                    24 -> "Cinematic"
-                    30 -> "Standard"
-                    else -> "Smooth 60"
-                }
-            ) { closeMenu ->
-                fpsOptions.forEach { fps ->
-                    val isSelected = fps == renderConfig.fps
-                    val desc = when (fps) {
-                        24 -> "Cinematic Film (24 FPS)"
-                        30 -> "Web / Media Sosial (30 FPS)"
-                        60 -> "Ultra Smooth Motion (60 FPS)"
-                        else -> "$fps FPS"
+                        )
                     }
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = desc,
-                                color = if (isSelected) SkyGlow else Color.White,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 13.sp
-                            )
-                        },
-                        onClick = {
-                            onFpsChange(fps)
-                            closeMenu()
-                        }
-                    )
                 }
-            }
 
-            // 4. Dropdown Bitrate / Kualitas Output
-            ConfigurationDropdown(
-                label = "Bitrate / Kualitas Output",
-                currentValue = renderConfig.quality.label,
-                icon = Icons.Default.VideoSettings,
-                badge = "${renderConfig.safeBitrateBps / 1_000_000} Mbps"
-            ) { closeMenu ->
-                QualityBitrate.ALL.forEach { q ->
-                    val isSelected = q.bitrateBps == renderConfig.quality.bitrateBps
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = q.label,
-                                color = if (isSelected) SkyGlow else Color.White,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 13.sp
-                            )
-                        },
-                        onClick = {
-                            onQualityChange(q)
-                            closeMenu()
+                // 2. Dropdown Format Gambar (JPG / PNG)
+                ConfigurationDropdown(
+                    label = "Format Gambar",
+                    currentValue = selectedImageFormat.displayName,
+                    icon = Icons.Default.Image,
+                    badge = selectedImageFormat.displayName
+                ) { closeMenu ->
+                    ImageFormat.entries.forEach { fmt ->
+                        val isSelected = fmt == selectedImageFormat
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = fmt.displayName,
+                                    color = if (isSelected) SkyGlow else Color.White,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp
+                                )
+                            },
+                            onClick = {
+                                onImageFormatChange(fmt)
+                                closeMenu()
+                            }
+                        )
+                    }
+                }
+
+            } else {
+                // ==========================================
+                // PENGATURAN KONFIGURASI KHUSUS MODE VIDEOS
+                // ==========================================
+
+                // 1. Dropdown Resolusi Video
+                ConfigurationDropdown(
+                    label = "Resolusi Video",
+                    currentValue = renderConfig.resolution.label,
+                    icon = Icons.Default.AspectRatio,
+                    badge = "${renderConfig.resolution.width}x${renderConfig.resolution.height}"
+                ) { closeMenu ->
+                    VideoResolution.ALL.forEach { res ->
+                        val isSelected = res.width == renderConfig.resolution.width &&
+                                res.height == renderConfig.resolution.height
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = res.label,
+                                        color = if (isSelected) SkyGlow else Color.White,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = res.category.displayName.take(8),
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            },
+                            onClick = {
+                                onResolutionChange(res)
+                                closeMenu()
+                            }
+                        )
+                    }
+                }
+
+                // 2. Dropdown Durasi Video
+                val durationOptions = listOf(3, 5, 8, 10, 12, 15, 20, 25, 30)
+                ConfigurationDropdown(
+                    label = "Durasi Video",
+                    currentValue = "${renderConfig.durationSeconds} Detik",
+                    icon = Icons.Default.Timer,
+                    badge = "${renderConfig.totalFrames} Frames"
+                ) { closeMenu ->
+                    durationOptions.forEach { dur ->
+                        val isSelected = dur == renderConfig.durationSeconds
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = "$dur Detik (${dur * renderConfig.fps} total frames)",
+                                    color = if (isSelected) SkyGlow else Color.White,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp
+                                )
+                            },
+                            onClick = {
+                                onDurationChange(dur)
+                                closeMenu()
+                            }
+                        )
+                    }
+                }
+
+                // 3. Dropdown FPS (Frame Rate)
+                val fpsOptions = listOf(24, 30, 60)
+                ConfigurationDropdown(
+                    label = "Frame Rate (FPS)",
+                    currentValue = "${renderConfig.fps} FPS",
+                    icon = Icons.Default.Speed,
+                    badge = when (renderConfig.fps) {
+                        24 -> "Cinematic"
+                        30 -> "Standard"
+                        else -> "Smooth 60"
+                    }
+                ) { closeMenu ->
+                    fpsOptions.forEach { fps ->
+                        val isSelected = fps == renderConfig.fps
+                        val desc = when (fps) {
+                            24 -> "Cinematic Film (24 FPS)"
+                            30 -> "Web / Media Sosial (30 FPS)"
+                            60 -> "Ultra Smooth Motion (60 FPS)"
+                            else -> "$fps FPS"
                         }
-                    )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = desc,
+                                    color = if (isSelected) SkyGlow else Color.White,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp
+                                )
+                            },
+                            onClick = {
+                                onFpsChange(fps)
+                                closeMenu()
+                            }
+                        )
+                    }
+                }
+
+                // 4. Dropdown Bitrate / Kualitas Output
+                ConfigurationDropdown(
+                    label = "Bitrate / Kualitas Output",
+                    currentValue = renderConfig.quality.label,
+                    icon = Icons.Default.VideoSettings,
+                    badge = "${renderConfig.safeBitrateBps / 1_000_000} Mbps"
+                ) { closeMenu ->
+                    QualityBitrate.ALL.forEach { q ->
+                        val isSelected = q.bitrateBps == renderConfig.quality.bitrateBps
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = q.label,
+                                    color = if (isSelected) SkyGlow else Color.White,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp
+                                )
+                            },
+                            onClick = {
+                                onQualityChange(q)
+                                closeMenu()
+                            }
+                        )
+                    }
                 }
             }
         }

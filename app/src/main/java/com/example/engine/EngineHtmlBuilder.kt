@@ -726,6 +726,107 @@ window.startVideoRender = async function() {
     if (banner) banner.style.display = 'none';
   }
 };
+
+window.renderStillImage = async function(formatStr) {
+  window.__IS_RENDER_CANCELLED__ = false;
+  const banner = document.getElementById('renderBanner');
+  try {
+    const isPng = !formatStr || formatStr.toLowerCase() === 'png';
+    const ext = isPng ? 'png' : 'jpg';
+
+    if (banner) {
+      banner.textContent = '🖼️ RENDERING ' + ext.toUpperCase() + '...';
+      banner.style.display = 'block';
+    }
+    postProgress(0, 1, 0.2, "Menyiapkan stage render gambar " + TARGET_W + "×" + TARGET_H + " (" + ext.toUpperCase() + ")...");
+
+    // Render with controlled harness
+    loadLivePreview(userCodeRaw, true);
+
+    await new Promise((resolve, reject) => {
+      const deadline = Date.now() + 5000;
+      const check = () => {
+        const iframe = document.getElementById('liveFrame');
+        const iwin = iframe && iframe.contentWindow;
+        if (iwin && iwin.__HARNESS_READY__) {
+          resolve();
+        } else if (Date.now() > deadline) {
+          reject(new Error("Timeout menunggu harness siap."));
+        } else {
+          setTimeout(check, 50);
+        }
+      };
+      check();
+    });
+
+    const iframe = document.getElementById('liveFrame');
+    const iwin = iframe.contentWindow;
+    const idoc = iframe.contentDocument;
+
+    if (!iwin.__HARNESS__) throw new Error("Harness deterministik gagal terpasang.");
+    const allCanvases = Array.from(idoc.querySelectorAll('canvas'));
+    if (!allCanvases || allCanvases.length === 0) throw new Error("Elemen <canvas> tidak ditemukan di dalam kode.");
+
+    let canvas = allCanvases[0];
+    let maxArea = (canvas.width || 0) * (canvas.height || 0);
+    for (let cIdx = 1; cIdx < allCanvases.length; cIdx++) {
+      const cItem = allCanvases[cIdx];
+      const area = (cItem.width || 0) * (cItem.height || 0);
+      if (area > maxArea) {
+        maxArea = area;
+        canvas = cItem;
+      }
+    }
+
+    if (canvas.width !== TARGET_W) canvas.width = TARGET_W;
+    if (canvas.height !== TARGET_H) canvas.height = TARGET_H;
+
+    iwin.__HARNESS__.step(0);
+    await new Promise(r => setTimeout(r, 60));
+
+    postProgress(1, 1, 0.7, "Mengompresi data gambar " + ext.toUpperCase() + "...");
+
+    let dataUrl = '';
+    if (isPng) {
+      // PNG supports alpha transparency natively
+      dataUrl = canvas.toDataURL('image/png');
+    } else {
+      // JPG does not support alpha: paint solid black background first
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = TARGET_W;
+      tempCanvas.height = TARGET_H;
+      const tctx = tempCanvas.getContext('2d');
+      tctx.fillStyle = '#000000';
+      tctx.fillRect(0, 0, TARGET_W, TARGET_H);
+      tctx.drawImage(canvas, 0, 0, TARGET_W, TARGET_H);
+      dataUrl = tempCanvas.toDataURL('image/jpeg', 0.95);
+    }
+
+    const filename = "Img-WM_" + TARGET_W + "x" + TARGET_H + "_" + Date.now();
+
+    if (window.AndroidBridge && window.AndroidBridge.onStartImageStream) {
+      const b64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      const CHUNK_SIZE = 128 * 1024;
+      window.AndroidBridge.onStartImageStream(filename, ext, TARGET_W, TARGET_H);
+      for (let offset = 0; offset < b64.length; offset += CHUNK_SIZE) {
+        const chunk = b64.substring(offset, Math.min(offset + CHUNK_SIZE, b64.length));
+        window.AndroidBridge.onChunkStream(chunk);
+      }
+      window.AndroidBridge.onEndImageStream();
+    } else if (window.AndroidBridge && window.AndroidBridge.onSaveImage) {
+      window.AndroidBridge.onSaveImage(dataUrl, ext, TARGET_W, TARGET_H);
+    }
+
+    postProgress(1, 1, 1.0, "Gambar " + ext.toUpperCase() + " berhasil dirender!");
+    loadLivePreview(userCodeRaw, false);
+
+  } catch (err) {
+    postError("Gagal merender gambar: " + (err.message || err));
+    loadLivePreview(userCodeRaw, false);
+  } finally {
+    if (banner) banner.style.display = 'none';
+  }
+};
 </script>
 </body>
 </html>

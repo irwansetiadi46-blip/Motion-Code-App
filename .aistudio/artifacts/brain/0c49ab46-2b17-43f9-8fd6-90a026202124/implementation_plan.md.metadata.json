@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for Dual Output Mode (Videos & Images) in War Motion, supporting real-time canvas capture to JPG and PNG (with transparency support), dynamic dropdown controls in Studio and Export tabs, and persisted format selection.",
+  "updatedAt": "2026-10-13T11:30:32.381643658Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

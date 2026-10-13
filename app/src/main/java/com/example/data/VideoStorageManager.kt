@@ -337,6 +337,151 @@ class VideoStorageManager(private val context: Context) {
         }
     }
 
+    val imageDir: File
+        get() {
+            val dir = File(context.filesDir, "images")
+            if (!dir.exists()) dir.mkdirs()
+            return dir
+        }
+
+    fun createImageFile(filenamePrefix: String, format: com.example.model.ImageFormat): File {
+        val prefix = if (filenamePrefix.isNotBlank()) filenamePrefix.trim() else "Img-WM"
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val name = "${prefix}_${timestamp}.${format.extension}"
+        return File(imageDir, name)
+    }
+
+    fun renameImageFile(oldFile: File, newNameWithoutExtension: String, format: com.example.model.ImageFormat): File? {
+        try {
+            if (!oldFile.exists()) return null
+            val rawName = newNameWithoutExtension.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            val cleanName = if (rawName.isBlank()) "Img-WM" else rawName.removeSuffix(".png").removeSuffix(".PNG").removeSuffix(".jpg").removeSuffix(".JPG").removeSuffix(".jpeg").removeSuffix(".JPEG").trim()
+            val targetFile = File(imageDir, "$cleanName.${format.extension}")
+
+            if (oldFile.absolutePath == targetFile.absolutePath) {
+                return oldFile
+            }
+
+            if (targetFile.exists()) {
+                targetFile.delete()
+            }
+
+            val success = oldFile.renameTo(targetFile)
+            return if (success) targetFile else null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
+
+    suspend fun downloadImageToCodeMotionFolder(
+        imageFile: File,
+        customFilename: String? = null,
+        format: com.example.model.ImageFormat,
+        onProgress: (Float) -> Unit = {}
+    ): Uri? = withContext(Dispatchers.IO) {
+        try {
+            if (!imageFile.exists()) return@withContext null
+            val resolver = context.contentResolver
+            val folderRelativePath = "${Environment.DIRECTORY_DOWNLOADS}/Code Motion Video"
+            val totalBytes = imageFile.length().coerceAtLeast(1L)
+
+            val baseName = if (!customFilename.isNullOrBlank()) {
+                val cleaned = customFilename.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                val stripped = cleaned.removeSuffix(".png").removeSuffix(".PNG")
+                    .removeSuffix(".jpg").removeSuffix(".JPG")
+                    .removeSuffix(".jpeg").removeSuffix(".JPEG").trim()
+                if (stripped.isBlank()) "Img-WM" else stripped
+            } else {
+                imageFile.nameWithoutExtension
+            }
+
+            val finalFilename = "$baseName.${format.extension}"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val collectionUri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                try {
+                    val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
+                    val selectionArgs = arrayOf(finalFilename, "$folderRelativePath%")
+                    resolver.delete(collectionUri, selection, selectionArgs)
+                } catch (_: Exception) {}
+
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, finalFilename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, format.mimeType)
+                    put(MediaStore.MediaColumns.DATE_ADDED, System.currentTimeMillis() / 1000)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, folderRelativePath)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+
+                val targetUri = resolver.insert(collectionUri, contentValues) ?: return@withContext null
+
+                resolver.openOutputStream(targetUri)?.use { outputStream ->
+                    FileInputStream(imageFile).use { inputStream ->
+                        val buffer = ByteArray(64 * 1024)
+                        var bytesCopied = 0L
+                        var read: Int
+
+                        onProgress(0.1f)
+                        while (inputStream.read(buffer).also { read = it } != -1) {
+                            outputStream.write(buffer, 0, read)
+                            bytesCopied += read
+                            val progress = (bytesCopied.toFloat() / totalBytes.toFloat()).coerceIn(0.1f, 0.98f)
+                            onProgress(progress)
+                            delay(8)
+                        }
+                        outputStream.flush()
+                    }
+                }
+
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(targetUri, contentValues, null, null)
+
+                onProgress(1.0f)
+                return@withContext targetUri
+            } else {
+                val publicDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Code Motion Video")
+                if (!publicDir.exists()) publicDir.mkdirs()
+                val targetFile = File(publicDir, finalFilename)
+                if (targetFile.exists()) {
+                    targetFile.delete()
+                }
+
+                FileOutputStream(targetFile).use { outputStream ->
+                    FileInputStream(imageFile).use { inputStream ->
+                        val buffer = ByteArray(64 * 1024)
+                        var bytesCopied = 0L
+                        var read: Int
+
+                        onProgress(0.1f)
+                        while (inputStream.read(buffer).also { read = it } != -1) {
+                            outputStream.write(buffer, 0, read)
+                            bytesCopied += read
+                            val progress = (bytesCopied.toFloat() / totalBytes.toFloat()).coerceIn(0.1f, 0.98f)
+                            onProgress(progress)
+                            delay(8)
+                        }
+                        outputStream.flush()
+                    }
+                }
+
+                android.media.MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(targetFile.absolutePath),
+                    arrayOf(format.mimeType),
+                    null
+                )
+
+                onProgress(1.0f)
+                return@withContext Uri.fromFile(targetFile)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     fun deleteVideo(videoFile: File): Boolean {
         try {
             val metaFile = File(videoDir, "${videoFile.nameWithoutExtension}.meta.json")
@@ -345,3 +490,4 @@ class VideoStorageManager(private val context: Context) {
         return if (videoFile.exists()) videoFile.delete() else false
     }
 }
+

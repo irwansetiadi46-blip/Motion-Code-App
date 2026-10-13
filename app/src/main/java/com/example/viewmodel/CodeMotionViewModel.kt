@@ -16,10 +16,13 @@ import com.example.data.PresetRepository
 import com.example.data.VideoStorageManager
 import com.example.engine.BridgeEvent
 import com.example.engine.WebCodecsBridge
+import com.example.model.ImageFormat
 import com.example.model.MicrostockPlatform
+import com.example.model.OutputMode
 import com.example.model.QualityBitrate
 import com.example.model.RenderConfig
 import com.example.model.RenderState
+import com.example.model.SavedImage
 import com.example.model.SavedVideo
 import com.example.model.VideoMetadata
 import com.example.model.VideoPreset
@@ -215,6 +218,27 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     private val _lastRenderedVideo = MutableStateFlow<SavedVideo?>(null)
     val lastRenderedVideo: StateFlow<SavedVideo?> = _lastRenderedVideo.asStateFlow()
 
+    private val prefs = application.getSharedPreferences("codemotion_app_prefs", android.content.Context.MODE_PRIVATE)
+
+    private val _outputMode = MutableStateFlow(
+        run {
+            val saved = prefs.getString("output_mode", OutputMode.VIDEOS.name)
+            try { OutputMode.valueOf(saved ?: "VIDEOS") } catch (_: Exception) { OutputMode.VIDEOS }
+        }
+    )
+    val outputMode: StateFlow<OutputMode> = _outputMode.asStateFlow()
+
+    private val _selectedImageFormat = MutableStateFlow(
+        run {
+            val saved = prefs.getString("selected_image_format", ImageFormat.PNG.name)
+            try { ImageFormat.valueOf(saved ?: "PNG") } catch (_: Exception) { ImageFormat.PNG }
+        }
+    )
+    val selectedImageFormat: StateFlow<ImageFormat> = _selectedImageFormat.asStateFlow()
+
+    private val _lastRenderedImage = MutableStateFlow<SavedImage?>(null)
+    val lastRenderedImage: StateFlow<SavedImage?> = _lastRenderedImage.asStateFlow()
+
     private val _activeTab = MutableStateFlow(NavigationTab.STUDIO)
     val activeTab: StateFlow<NavigationTab> = _activeTab.asStateFlow()
 
@@ -293,6 +317,11 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     init {
         loadSavedVideos()
         observeBridgeEvents()
+        if (_outputMode.value == OutputMode.IMAGES && _renderConfig.value.resolution.totalPixels < 4_000_000L) {
+            val compliantRes = VideoResolution.IMAGE_RESOLUTIONS.firstOrNull { it.category == _renderConfig.value.resolution.category }
+                ?: VideoResolution.IMAGE_RESOLUTIONS.first()
+            _renderConfig.update { it.copy(resolution = compliantRes) }
+        }
     }
 
     private fun observeBridgeEvents() {
@@ -356,6 +385,45 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                         ).show()
                     }
 
+                    is BridgeEvent.ImageSuccess -> {
+                        var imageFile = event.imageFile
+                        val currentMeta = _currentMetadata.value
+                        val metaFilename = currentMeta.filename.trim()
+                        if (metaFilename.isNotBlank()) {
+                            val renamed = storageManager.renameImageFile(imageFile, metaFilename, event.format)
+                            if (renamed != null) {
+                                imageFile = renamed
+                            }
+                        }
+
+                        val saved = SavedImage(
+                            id = imageFile.nameWithoutExtension,
+                            file = imageFile,
+                            title = imageFile.name,
+                            width = event.width,
+                            height = event.height,
+                            format = event.format,
+                            fileSizeBytes = imageFile.length(),
+                            createdAtMillis = System.currentTimeMillis()
+                        )
+
+                        _renderState.value = RenderState.ImageSuccess(
+                            imageFile = imageFile,
+                            width = event.width,
+                            height = event.height,
+                            format = event.format,
+                            fileSizeBytes = imageFile.length()
+                        )
+
+                        _lastRenderedImage.value = saved
+
+                        Toast.makeText(
+                            getApplication(),
+                            "✅ Render Gambar ${event.format.displayName} Selesai! Preview ditampilkan di bawah.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+
                     is BridgeEvent.Error -> {
                         _renderState.value = RenderState.Error(event.message)
                         Toast.makeText(getApplication(), "❌ Render Gagal: ${event.message}", Toast.LENGTH_LONG).show()
@@ -404,7 +472,13 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun updateResolution(resolution: VideoResolution) {
-        _renderConfig.update { it.copy(resolution = resolution) }
+        val finalRes = if (_outputMode.value == OutputMode.IMAGES && resolution.totalPixels < 4_000_000L) {
+            VideoResolution.IMAGE_RESOLUTIONS.firstOrNull { it.category == resolution.category }
+                ?: VideoResolution.IMAGE_RESOLUTIONS.first()
+        } else {
+            resolution
+        }
+        _renderConfig.update { it.copy(resolution = finalRes) }
         _reloadPreviewTrigger.update { it + 1 }
     }
 
@@ -425,6 +499,22 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
         _activeTab.value = tab
     }
 
+    fun setOutputMode(mode: OutputMode) {
+        _outputMode.value = mode
+        prefs.edit().putString("output_mode", mode.name).apply()
+        if (mode == OutputMode.IMAGES && _renderConfig.value.resolution.totalPixels < 4_000_000L) {
+            val compliantRes = VideoResolution.IMAGE_RESOLUTIONS.firstOrNull { it.category == _renderConfig.value.resolution.category }
+                ?: VideoResolution.IMAGE_RESOLUTIONS.first()
+            _renderConfig.update { it.copy(resolution = compliantRes) }
+            _reloadPreviewTrigger.update { it + 1 }
+        }
+    }
+
+    fun setImageFormat(format: ImageFormat) {
+        _selectedImageFormat.value = format
+        prefs.edit().putString("selected_image_format", format.name).apply()
+    }
+
     fun triggerRender() {
         val wv = _boundWebView ?: _engineWebView
         if (wv == null) {
@@ -432,14 +522,28 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
             return
         }
         _boundWebView = wv
-        _renderState.value = RenderState.Preparing("Menyiapkan encoder...")
-        try {
-            wv.evaluateJavascript(
-                "if (window.startVideoRender) { window.startVideoRender(); } else { window.AndroidBridge.onError('Engine belum siap.'); }",
-                null
-            )
-        } catch (e: Exception) {
-            _renderState.value = RenderState.Error("Gagal menjalankan render: ${e.message ?: "WebView tidak aktif"}")
+
+        if (_outputMode.value == OutputMode.IMAGES) {
+            val format = _selectedImageFormat.value
+            _renderState.value = RenderState.Preparing("Menyiapkan render gambar ${format.displayName}...")
+            try {
+                wv.evaluateJavascript(
+                    "if (window.renderStillImage) { window.renderStillImage('${format.extension}'); } else { window.AndroidBridge.onError('Engine belum siap.'); }",
+                    null
+                )
+            } catch (e: Exception) {
+                _renderState.value = RenderState.Error("Gagal menjalankan render gambar: ${e.message ?: "WebView tidak aktif"}")
+            }
+        } else {
+            _renderState.value = RenderState.Preparing("Menyiapkan encoder...")
+            try {
+                wv.evaluateJavascript(
+                    "if (window.startVideoRender) { window.startVideoRender(); } else { window.AndroidBridge.onError('Engine belum siap.'); }",
+                    null
+                )
+            } catch (e: Exception) {
+                _renderState.value = RenderState.Error("Gagal menjalankan render: ${e.message ?: "WebView tidak aktif"}")
+            }
         }
     }
 
@@ -576,6 +680,18 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                                 map + (updatedVideo.id to generated)
                             }
                             loadSavedVideos()
+                        }
+                    }
+
+                    val targetImage = _lastRenderedImage.value
+                    if (targetImage != null && targetImage.file.exists()) {
+                        val renamedImage = storageManager.renameImageFile(targetImage.file, genFilename, targetImage.format)
+                        if (renamedImage != null) {
+                            _lastRenderedImage.value = targetImage.copy(
+                                id = renamedImage.nameWithoutExtension,
+                                file = renamedImage,
+                                title = renamedImage.name
+                            )
                         }
                     }
                 }
@@ -753,6 +869,7 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
      * textarea input in Metadata, with fallback to "Vid-WM.mp4".
      */
     fun downloadVideo(video: SavedVideo) {
+        if (_downloadState.value is DownloadState.Downloading) return
         // Ambil nama file langsung dari textarea input File Name di bagian Metadata
         val textareaFilename = _currentMetadata.value.filename.trim()
         val mappedFilename = _videoMetadataMap.value[video.id]?.filename?.trim() ?: ""
@@ -826,6 +943,85 @@ class CodeMotionViewModel(application: Application) : AndroidViewModel(applicati
                     "Butuh izin penyimpanan untuk download di Android versi ini."
                 } else {
                     "Gagal men-download video ke penyimpanan lokal."
+                }
+                _downloadState.value = DownloadState.Error(errorMsg)
+                Toast.makeText(getApplication(), errorMsg, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /**
+     * Exports exactly 1 image (JPG / PNG) into "Download/Code Motion Video" folder.
+     * Automatically renames the image file to match EXACTLY what is in the "File Name"
+     * textarea input in Metadata, with fallback to "Img-WM.<ext>".
+     */
+    fun downloadImage(image: SavedImage) {
+        if (_downloadState.value is DownloadState.Downloading) return
+        val textareaFilename = _currentMetadata.value.filename.trim()
+        val format = _selectedImageFormat.value
+        val rawBaseName = if (textareaFilename.isNotBlank()) textareaFilename else "Img-WM"
+        val cleanBaseName = rawBaseName.removeSuffix(".png").removeSuffix(".PNG")
+            .removeSuffix(".jpg").removeSuffix(".JPG")
+            .removeSuffix(".jpeg").removeSuffix(".JPEG").trim()
+        val safeBaseName = cleanBaseName.replace(Regex("[\\\\/:*?\"<>|]"), "_").ifBlank { "Img-WM" }
+        val targetFilename = "$safeBaseName.${format.extension}"
+
+        val currentImageFile = image.file
+        val renamedFile = if (currentImageFile.exists()) {
+            storageManager.renameImageFile(currentImageFile, safeBaseName, format) ?: currentImageFile
+        } else {
+            currentImageFile
+        }
+
+        val updatedImage = image.copy(
+            id = renamedFile.nameWithoutExtension,
+            file = renamedFile,
+            title = targetFilename,
+            format = format
+        )
+        _lastRenderedImage.value = updatedImage
+
+        val updatedMetadata = _currentMetadata.value.copy(filename = safeBaseName)
+        _currentMetadata.value = updatedMetadata
+
+        viewModelScope.launch {
+            _downloadState.value = DownloadState.Downloading(
+                progress = 0.1f,
+                percent = 10,
+                message = "Memulai ekspor gambar $targetFilename..."
+            )
+
+            val uri = storageManager.downloadImageToCodeMotionFolder(
+                imageFile = renamedFile,
+                customFilename = safeBaseName,
+                format = format,
+                onProgress = { prog ->
+                    val pct = (prog * 100).toInt().coerceIn(1, 100)
+                    _downloadState.value = DownloadState.Downloading(
+                        progress = prog,
+                        percent = pct,
+                        message = "Mengekspor gambar $pct%..."
+                    )
+                }
+            )
+
+            if (uri != null) {
+                _downloadState.value = DownloadState.Success(
+                    folderName = "Download/Code Motion Video",
+                    filename = targetFilename
+                )
+                Toast.makeText(
+                    getApplication(),
+                    "✅ Ekspor Selesai! Tersimpan di: Download/Code Motion Video/$targetFilename",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                val isPermissionMissing = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                    ContextCompat.checkSelfPermission(getApplication(), Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                val errorMsg = if (isPermissionMissing) {
+                    "Butuh izin penyimpanan untuk ekspor di Android versi ini."
+                } else {
+                    "Gagal mengekspor file gambar ke penyimpanan lokal."
                 }
                 _downloadState.value = DownloadState.Error(errorMsg)
                 Toast.makeText(getApplication(), errorMsg, Toast.LENGTH_LONG).show()

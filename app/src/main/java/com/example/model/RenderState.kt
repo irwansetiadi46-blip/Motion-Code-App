@@ -24,5 +24,13 @@ sealed interface RenderState {
         val fileSizeBytes: Long
     ) : RenderState
 
+    data class ImageSuccess(
+        val imageFile: File,
+        val width: Int,
+        val height: Int,
+        val format: ImageFormat,
+        val fileSizeBytes: Long
+    ) : RenderState
+
     data class Error(val message: String) : RenderState
 }

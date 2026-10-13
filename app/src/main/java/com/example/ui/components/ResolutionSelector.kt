@@ -37,7 +37,8 @@ import com.example.ui.theme.SkyGlow
 fun ResolutionSelector(
     selectedResolution: VideoResolution,
     onResolutionSelected: (VideoResolution) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    filterMin4MP: Boolean = false
 ) {
     val aspectPresets = listOf(
         "16:9" to AspectRatioCategory.LANDSCAPE,
@@ -58,10 +59,33 @@ fun ResolutionSelector(
                 .fillMaxWidth()
                 .padding(14.dp)
         ) {
-            Text(
-                text = "Format & Aspect Ratio",
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color.White)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (filterMin4MP) "Format & Aspek Rasio Gambar" else "Format & Aspect Ratio",
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = Color.White)
+                )
+                if (filterMin4MP) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0x3310B981),
+                        border = BorderStroke(1.dp, Color(0x6610B981))
+                    ) {
+                        Text(
+                            text = "4 MP",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF34D399),
+                                fontSize = 10.sp
+                            )
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(10.dp))
 
             // Aspect Presets Quick Row
@@ -75,18 +99,24 @@ fun ResolutionSelector(
                     val isActive = selectedResolution.category == category
                     Surface(
                         onClick = {
+                            val candidatePool = if (filterMin4MP) {
+                                VideoResolution.IMAGE_RESOLUTIONS.filter { it.category == category }
+                            } else {
+                                VideoResolution.ALL.filter { it.category == category }
+                            }
+
                             val is4k = selectedResolution.label.contains("4K")
                             val is2k = selectedResolution.label.contains("2K")
                             val isHd = selectedResolution.label.startsWith("HD") || selectedResolution.label.contains(" 720")
-                            val defaultForCategory = VideoResolution.ALL.filter { it.category == category }.firstOrNull { target ->
+                            val defaultForCategory = candidatePool.firstOrNull { target ->
                                 when {
                                     is4k -> target.label.contains("4K")
                                     is2k -> target.label.contains("2K")
                                     isHd -> target.label.startsWith("HD") || target.label.contains(" 720")
-                                    else -> target.label.contains("Full HD")
+                                    else -> target.label.contains("Full HD") || target.label.contains("4MP")
                                 }
-                            } ?: VideoResolution.ALL.firstOrNull { it.category == category && it.isDefault }
-                              ?: VideoResolution.ALL.firstOrNull { it.category == category }
+                            } ?: candidatePool.firstOrNull { it.isDefault }
+                              ?: candidatePool.firstOrNull()
 
                             if (defaultForCategory != null) {
                                 onResolutionSelected(defaultForCategory)
@@ -112,12 +142,17 @@ fun ResolutionSelector(
 
             // Resolutions within the category
             Text(
-                text = "Pilihan Resolusi:",
+                text = if (filterMin4MP) "Pilihan Resolusi Gambar:" else "Pilihan Resolusi:",
                 style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
             )
             Spacer(modifier = Modifier.height(6.dp))
 
-            val currentCategoryResolutions = VideoResolution.ALL.filter { it.category == selectedResolution.category }
+            val currentCategoryResolutions = if (filterMin4MP) {
+                VideoResolution.IMAGE_RESOLUTIONS.filter { it.category == selectedResolution.category }
+            } else {
+                VideoResolution.ALL.filter { it.category == selectedResolution.category }
+            }
+
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 currentCategoryResolutions.forEach { res ->
                     val isSelected = res == selectedResolution
@@ -135,20 +170,30 @@ fun ResolutionSelector(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = res.label,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (isSelected) Color.White else Color(0xFFE2E8F0)
+                            if (filterMin4MP) {
+                                Text(
+                                    text = res.imageLabel,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isSelected) Color.White else Color(0xFFE2E8F0)
+                                    )
                                 )
-                            )
-                            Text(
-                                text = "${res.width}×${res.height}",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    color = if (isSelected) SkyGlow else Color(0xFF64748B)
+                            } else {
+                                Text(
+                                    text = res.label,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                        color = if (isSelected) Color.White else Color(0xFFE2E8F0)
+                                    )
                                 )
-                            )
+                                Text(
+                                    text = "${res.width}×${res.height}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        color = if (isSelected) SkyGlow else Color(0xFF64748B)
+                                    )
+                                )
+                            }
                         }
                     }
                 }

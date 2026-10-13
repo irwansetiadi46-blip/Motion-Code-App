@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
@@ -65,9 +66,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.PresetRepository
+import com.example.model.ImageFormat
+import com.example.model.OutputMode
 import com.example.model.RenderState
 import com.example.ui.components.CodeTerminalEditor
 import com.example.ui.components.LiveAnimationViewport
+import com.example.ui.components.OutputModeSelectorCard
+import com.example.ui.components.RenderedImageView
 import com.example.ui.components.ResolutionSelector
 import com.example.ui.components.VideoPlayerView
 import com.example.ui.theme.DarkBackground
@@ -94,6 +99,9 @@ fun StudioScreen(
     val selectedPreset by viewModel.selectedPreset.collectAsState()
     val reloadTrigger by viewModel.reloadPreviewTrigger.collectAsState()
     val lastRenderedVideo by viewModel.lastRenderedVideo.collectAsState()
+    val lastRenderedImage by viewModel.lastRenderedImage.collectAsState()
+    val outputMode by viewModel.outputMode.collectAsState()
+    val selectedImageFormat by viewModel.selectedImageFormat.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
 
     var showExportSettings by remember { mutableStateOf(false) }
@@ -122,6 +130,12 @@ fun StudioScreen(
         val context = androidx.compose.ui.platform.LocalContext.current
         val engineWebView = remember { viewModel.getOrCreateEngineWebView(context) }
 
+        // Mode Selector: Videos / Images
+        OutputModeSelectorCard(
+            currentMode = outputMode,
+            onModeSelected = { viewModel.setOutputMode(it) }
+        )
+
         // Live Animation Stage (Real-time Viewport from user's code)
         LiveAnimationViewport(
             userCode = userCode,
@@ -132,7 +146,7 @@ fun StudioScreen(
             onWebViewDisposed = {
                 // Keep engine webview alive during tab switch
             },
-            title = "VIEWPORT ANIMASI",
+            title = if (outputMode == OutputMode.IMAGES) "VIEWPORT GAMBAR" else "VIEWPORT ANIMASI",
             isRendering = isRendering,
             engineWebView = engineWebView
         )
@@ -160,13 +174,13 @@ fun StudioScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Movie,
+                            imageVector = if (outputMode == OutputMode.VIDEOS) Icons.Default.Movie else Icons.Default.Image,
                             contentDescription = null,
                             tint = SkyGlow,
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Render ke Video MP4",
+                            text = if (outputMode == OutputMode.VIDEOS) "Render ke Video MP4" else "Render Gambar",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -191,7 +205,11 @@ fun StudioScreen(
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = "${renderConfig.resolution.width}×${renderConfig.resolution.height} • ${renderConfig.fps}fps",
+                                text = if (outputMode == OutputMode.IMAGES) {
+                                    renderConfig.resolution.imageLabel
+                                } else {
+                                    "${renderConfig.resolution.width}×${renderConfig.resolution.height} • ${renderConfig.fps}fps"
+                                },
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontFamily = FontFamily.Monospace,
                                     color = ElectricCyan
@@ -207,78 +225,125 @@ fun StudioScreen(
                     }
                 }
 
-                // Expandable Settings: Resolution, FPS, Duration
+                // Expandable Settings: Resolution, Formats / FPS, Duration
                 AnimatedVisibility(visible = showExportSettings) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Pilih Resolusi & Rasio Aspek (Hingga 4K Ultra HD):",
-                            style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
-                        )
-                        ResolutionSelector(
-                            selectedResolution = renderConfig.resolution,
-                            onResolutionSelected = { viewModel.updateResolution(it) }
-                        )
-
-                        // Duration Slider
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        if (outputMode == OutputMode.IMAGES) {
+                            // Pengaturan Khusus Mode Images
                             Text(
-                                text = "Durasi Video:",
+                                text = "Pilihan Resolusi Gambar:",
                                 style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
                             )
+                            ResolutionSelector(
+                                selectedResolution = renderConfig.resolution,
+                                onResolutionSelected = { viewModel.updateResolution(it) },
+                                filterMin4MP = true
+                            )
+
+                            // Image Format Quick Selector (JPG / PNG)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Format Gambar:",
+                                    style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(ImageFormat.PNG, ImageFormat.JPG).forEach { fmt ->
+                                        val isSelected = selectedImageFormat == fmt
+                                        Surface(
+                                            onClick = { viewModel.setImageFormat(fmt) },
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isSelected) ElectricBlue else Color(0xFF1E293B),
+                                            border = BorderStroke(1.dp, if (isSelected) SkyGlow else DarkBorder)
+                                        ) {
+                                            Text(
+                                                text = fmt.displayName,
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isSelected) Color.White else Color(0xFF94A3B8)
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Pengaturan Khusus Mode Videos
                             Text(
-                                text = "${renderConfig.durationSeconds} Detik",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ElectricCyan
+                                text = "Pilih Resolusi & Rasio Aspek (Hingga 4K Ultra HD):",
+                                style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
+                            )
+                            ResolutionSelector(
+                                selectedResolution = renderConfig.resolution,
+                                onResolutionSelected = { viewModel.updateResolution(it) },
+                                filterMin4MP = false
+                            )
+
+                            // Duration Slider
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Durasi Video:",
+                                    style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
+                                )
+                                Text(
+                                    text = "${renderConfig.durationSeconds} Detik",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ElectricCyan
+                                    )
+                                )
+                            }
+                            Slider(
+                                value = renderConfig.durationSeconds.toFloat(),
+                                onValueChange = { viewModel.updateDuration(it.toInt()) },
+                                valueRange = 3f..20f,
+                                steps = 16,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = ElectricCyan,
+                                    activeTrackColor = ElectricBlue,
+                                    inactiveTrackColor = Color(0xFF334155)
                                 )
                             )
-                        }
-                        Slider(
-                            value = renderConfig.durationSeconds.toFloat(),
-                            onValueChange = { viewModel.updateDuration(it.toInt()) },
-                            valueRange = 3f..20f,
-                            steps = 16,
-                            colors = SliderDefaults.colors(
-                                thumbColor = ElectricCyan,
-                                activeTrackColor = ElectricBlue,
-                                inactiveTrackColor = Color(0xFF334155)
-                            )
-                        )
 
-                        // FPS selector
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Frame Rate:",
-                                style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
-                            )
-                            listOf(24, 30, 60).forEach { f ->
-                                val isF = renderConfig.fps == f
-                                Surface(
-                                    onClick = { viewModel.updateFps(f) },
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = if (isF) Color(0xFF0284C7) else Color(0xFF1E293B),
-                                    border = BorderStroke(1.dp, if (isF) SkyGlow else DarkBorder)
-                                ) {
-                                    Text(
-                                        text = "${f}fps",
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            color = if (isF) Color.White else Color(0xFF94A3B8)
+                            // FPS selector
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Frame Rate:",
+                                    style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF94A3B8))
+                                )
+                                listOf(24, 30, 60).forEach { f ->
+                                    val isF = renderConfig.fps == f
+                                    Surface(
+                                        onClick = { viewModel.updateFps(f) },
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = if (isF) Color(0xFF0284C7) else Color(0xFF1E293B),
+                                        border = BorderStroke(1.dp, if (isF) SkyGlow else DarkBorder)
+                                    ) {
+                                        Text(
+                                            text = "${f}fps",
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                color = if (isF) Color.White else Color(0xFF94A3B8)
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
                         }
@@ -317,14 +382,14 @@ fun StudioScreen(
                         )
                     } else {
                         Icon(
-                            imageVector = Icons.Default.Movie,
+                            imageVector = if (outputMode == OutputMode.VIDEOS) Icons.Default.Movie else Icons.Default.Image,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp),
                             tint = Color.White
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Render Mp4",
+                            text = if (outputMode == OutputMode.VIDEOS) "Render Mp4" else "Render Images",
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
@@ -411,8 +476,16 @@ fun StudioScreen(
             }
         }
 
-        // Section: Video Mp4 Preview (Displayed after render finishes or when video selected)
-        if (lastRenderedVideo != null) {
+        // Section: Media Preview (Displayed after render finishes)
+        if (outputMode == OutputMode.IMAGES && lastRenderedImage != null) {
+            RenderedImageView(
+                image = lastRenderedImage!!,
+                selectedFormat = selectedImageFormat,
+                onFormatChange = { viewModel.setImageFormat(it) },
+                onExport = { viewModel.downloadImage(lastRenderedImage!!) },
+                onDelete = { viewModel.cancelOrDismissRenderState() }
+            )
+        } else if (outputMode == OutputMode.VIDEOS && lastRenderedVideo != null) {
             VideoPlayerView(
                 video = lastRenderedVideo!!,
                 onDownload = { viewModel.downloadVideo(lastRenderedVideo!!) },
@@ -458,7 +531,7 @@ fun StudioScreen(
                         )
 
                         Text(
-                            text = "Mengunduh Video MP4...",
+                            text = if (outputMode == OutputMode.IMAGES) "Mengekspor Gambar..." else "Mengunduh Video MP4...",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -527,7 +600,10 @@ fun StudioScreen(
                         )
 
                         Text(
-                            text = "File video MP4 berhasil disimpan ke memori lokal di:\n\n${dState.folderName}/${dState.filename}",
+                            text = if (outputMode == OutputMode.IMAGES)
+                                "File gambar berhasil disimpan ke memori lokal di:\n\n${dState.folderName}/${dState.filename}"
+                            else
+                                "File video MP4 berhasil disimpan ke memori lokal di:\n\n${dState.folderName}/${dState.filename}",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = FontFamily.Monospace,
                                 color = Color(0xFFE2E8F0),

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Speed
@@ -59,11 +60,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.model.MicrostockPlatform
+import com.example.model.OutputMode
 import com.example.model.QualityBitrate
 import com.example.model.RenderState
 import com.example.ui.components.ExportConfigurationCard
 import com.example.ui.components.LiveAnimationViewport
 import com.example.ui.components.MicrostockExportDialog
+import com.example.ui.components.OutputModeSelectorCard
+import com.example.ui.components.RenderedImageView
 import com.example.ui.components.StockMetadataCard
 import com.example.ui.components.VideoPlayerView
 import com.example.ui.theme.DarkBackground
@@ -87,6 +91,9 @@ fun ExportScreen(
     val renderConfig by viewModel.renderConfig.collectAsState()
     val renderState by viewModel.renderState.collectAsState()
     val selectedVideo by viewModel.selectedVideoForPlayback.collectAsState()
+    val lastRenderedImage by viewModel.lastRenderedImage.collectAsState()
+    val outputMode by viewModel.outputMode.collectAsState()
+    val selectedImageFormat by viewModel.selectedImageFormat.collectAsState()
     val downloadState by viewModel.downloadState.collectAsState()
     val reloadTrigger by viewModel.reloadPreviewTrigger.collectAsState()
     val currentMetadata by viewModel.currentMetadata.collectAsState()
@@ -107,6 +114,12 @@ fun ExportScreen(
         val context = androidx.compose.ui.platform.LocalContext.current
         val engineWebView = remember { viewModel.getOrCreateEngineWebView(context) }
 
+        // Mode Selector: Videos / Images (Synchronized across Studio & Export tabs)
+        OutputModeSelectorCard(
+            currentMode = outputMode,
+            onModeSelected = { viewModel.setOutputMode(it) }
+        )
+
         // Section: Live Viewport Preview
         LiveAnimationViewport(
             userCode = userCode,
@@ -119,12 +132,12 @@ fun ExportScreen(
             onWebViewDisposed = {
                 // Keep engine webview alive during tab switch
             },
-            title = "REAL-TIME ANIMATION VIEWPORT",
+            title = if (outputMode == OutputMode.IMAGES) "VIEWPORT GAMBAR" else "REAL-TIME ANIMATION VIEWPORT",
             isRendering = isRendering,
             engineWebView = engineWebView
         )
 
-        // 3. Tombol Render Mp4 di tab export persis di bawah Viewport di atas Container Configuration
+        // Tombol Render Mp4 / Render Images di tab export persis di bawah Viewport di atas Container Configuration
         Button(
             onClick = {
                 if (isRendering) {
@@ -152,13 +165,17 @@ fun ExportScreen(
                 Text("Cancel", fontWeight = FontWeight.Bold, color = Color.White)
             } else {
                 Icon(
-                    imageVector = Icons.Default.Movie,
+                    imageVector = if (outputMode == OutputMode.VIDEOS) Icons.Default.Movie else Icons.Default.Image,
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
                     tint = Color.White
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Render Mp4", fontWeight = FontWeight.Bold, color = Color.White)
+                Text(
+                    text = if (outputMode == OutputMode.VIDEOS) "Render Mp4" else "Render Images",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
             }
         }
 
@@ -219,13 +236,16 @@ fun ExportScreen(
             }
         }
 
-        // 2. Container bernama Export Configuration dengan pilihan Resolusi, Durasi, Fps, dan Bitrate berbentuk Dropdown
+        // Container Export Configuration yang menyesuaikan secara cerdas antara Videos dan Images
         ExportConfigurationCard(
             renderConfig = renderConfig,
             onResolutionChange = { viewModel.updateResolution(it) },
             onDurationChange = { viewModel.updateDuration(it) },
             onFpsChange = { viewModel.updateFps(it) },
-            onQualityChange = { viewModel.updateQuality(it) }
+            onQualityChange = { viewModel.updateQuality(it) },
+            outputMode = outputMode,
+            selectedImageFormat = selectedImageFormat,
+            onImageFormatChange = { viewModel.setImageFormat(it) }
         )
 
         // Error message if any
@@ -258,8 +278,16 @@ fun ExportScreen(
             }
         }
 
-        // Section: Video MP4 Preview (Displayed after render finishes)
-        if (selectedVideo != null) {
+        // Section: Media Preview (Displayed after render finishes)
+        if (outputMode == OutputMode.IMAGES && lastRenderedImage != null) {
+            RenderedImageView(
+                image = lastRenderedImage!!,
+                selectedFormat = selectedImageFormat,
+                onFormatChange = { viewModel.setImageFormat(it) },
+                onExport = { viewModel.downloadImage(lastRenderedImage!!) },
+                onDelete = { viewModel.cancelOrDismissRenderState() }
+            )
+        } else if (outputMode == OutputMode.VIDEOS && selectedVideo != null) {
             VideoPlayerView(
                 video = selectedVideo!!,
                 onDownload = { viewModel.downloadVideo(selectedVideo!!) },
@@ -328,7 +356,7 @@ fun ExportScreen(
                         )
 
                         Text(
-                            text = "Mengunduh Video MP4...",
+                            text = if (outputMode == OutputMode.IMAGES) "Mengekspor Gambar..." else "Mengunduh Video MP4...",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
@@ -397,7 +425,10 @@ fun ExportScreen(
                         )
 
                         Text(
-                            text = "File video MP4 berhasil disimpan ke memori lokal di:\n\n${dState.folderName}/${dState.filename}",
+                            text = if (outputMode == OutputMode.IMAGES)
+                                "File gambar berhasil disimpan ke memori lokal di:\n\n${dState.folderName}/${dState.filename}"
+                            else
+                                "File video MP4 berhasil disimpan ke memori lokal di:\n\n${dState.folderName}/${dState.filename}",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = FontFamily.Monospace,
                                 color = Color(0xFFE2E8F0),

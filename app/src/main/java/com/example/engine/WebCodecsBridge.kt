@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -25,6 +26,14 @@ sealed interface BridgeEvent {
         val width: Int,
         val height: Int,
         val durationSec: Float,
+        val fileSizeBytes: Long
+    ) : BridgeEvent
+
+    data class ImageSuccess(
+        val imageFile: File,
+        val width: Int,
+        val height: Int,
+        val format: com.example.model.ImageFormat,
         val fileSizeBytes: Long
     ) : BridgeEvent
 
@@ -129,6 +138,103 @@ class WebCodecsBridge(
                 }
             } catch (e: Exception) {
                 onError("Gagal menutup file: ${e.message}")
+            }
+        }
+    }
+
+    private var streamImageFormat: com.example.model.ImageFormat? = null
+
+    @JavascriptInterface
+    fun onStartImageStream(filename: String, formatStr: String, width: Int, height: Int) {
+        synchronized(streamLock) {
+            try {
+                activeOutputStream?.close()
+                val format = if (formatStr.equals("jpg", ignoreCase = true) || formatStr.equals("jpeg", ignoreCase = true)) {
+                    com.example.model.ImageFormat.JPG
+                } else {
+                    com.example.model.ImageFormat.PNG
+                }
+                streamImageFormat = format
+                val file = storageManager.createImageFile(filename, format)
+                activeOutputFile = file
+                activeOutputStream = FileOutputStream(file)
+                streamFilename = filename
+                streamW = width
+                streamH = height
+            } catch (e: Exception) {
+                onError("Gagal menyiapkan file output gambar: ${e.message}")
+            }
+        }
+    }
+
+    @JavascriptInterface
+    fun onEndImageStream() {
+        synchronized(streamLock) {
+            try {
+                activeOutputStream?.flush()
+                activeOutputStream?.close()
+                activeOutputStream = null
+
+                val file = activeOutputFile
+                val format = streamImageFormat ?: com.example.model.ImageFormat.PNG
+                if (file != null && file.exists() && file.length() > 0) {
+                    val finalFile = file
+                    val width = streamW
+                    val height = streamH
+                    val size = file.length()
+
+                    scope.launch(Dispatchers.Main) {
+                        _events.emit(
+                            BridgeEvent.ImageSuccess(
+                                imageFile = finalFile,
+                                width = width,
+                                height = height,
+                                format = format,
+                                fileSizeBytes = size
+                            )
+                        )
+                    }
+                } else {
+                    onError("File gambar kosong atau gagal disimpan.")
+                }
+            } catch (e: Exception) {
+                onError("Gagal menutup file gambar: ${e.message}")
+            }
+        }
+    }
+
+    @JavascriptInterface
+    fun onSaveImage(dataUrlOrBase64: String, formatStr: String, width: Int, height: Int) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val format = if (formatStr.equals("jpg", ignoreCase = true) || formatStr.equals("jpeg", ignoreCase = true)) {
+                    com.example.model.ImageFormat.JPG
+                } else {
+                    com.example.model.ImageFormat.PNG
+                }
+                val cleanBase64 = if (dataUrlOrBase64.contains(",")) {
+                    dataUrlOrBase64.substringAfter(",")
+                } else {
+                    dataUrlOrBase64
+                }
+                val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
+                val filename = "Img-WM_${width}x${height}_${System.currentTimeMillis()}"
+                val file = storageManager.createImageFile(filename, format)
+                FileOutputStream(file).use { it.write(bytes) }
+
+                withContext(Dispatchers.Main) {
+                    _events.emit(
+                        BridgeEvent.ImageSuccess(
+                            imageFile = file,
+                            width = width,
+                            height = height,
+                            format = format,
+                            fileSizeBytes = file.length()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                onError("Gagal menyimpan gambar: ${e.message}")
             }
         }
     }
