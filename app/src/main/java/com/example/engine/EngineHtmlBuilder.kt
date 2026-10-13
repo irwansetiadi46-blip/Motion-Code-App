@@ -778,8 +778,23 @@ window.renderStillImage = async function(formatStr) {
       }
     }
 
-    if (canvas.width !== TARGET_W) canvas.width = TARGET_W;
-    if (canvas.height !== TARGET_H) canvas.height = TARGET_H;
+    const origW = canvas.width || TARGET_W;
+    const origH = canvas.height || TARGET_H;
+
+    if (canvas.width !== TARGET_W || canvas.height !== TARGET_H) {
+      const tempC = document.createElement('canvas');
+      tempC.width = origW;
+      tempC.height = origH;
+      const tCtx = tempC.getContext('2d');
+      tCtx.drawImage(canvas, 0, 0);
+
+      canvas.width = TARGET_W;
+      canvas.height = TARGET_H;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(tempC, 0, 0, origW, origH, 0, 0, TARGET_W, TARGET_H);
+    }
 
     iwin.__HARNESS__.step(0);
     await new Promise(r => setTimeout(r, 60));
